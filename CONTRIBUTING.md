@@ -74,9 +74,9 @@ This is the most important rule in the project.
 - One idea per commit. Avoid messages like "update", "fix" or "changes".
 - If you paired with someone, credit them with a `Co-authored-by:` line.
 
-## 11. Choices about how to build it
+## 11. Bigger changes
 
-The team chooses how TRISCRIPT is built and writes down each important choice, with the options it compared and the reasons, in the `docs/` folder. If you want to change one of those choices, open an issue and discuss it first.
+If you want to change how something already works, or add something large, open an issue and discuss it first. Important decisions are written down in the `docs/` folder with their reasons, so that everyone can follow them later.
 
 ## Questions
 
