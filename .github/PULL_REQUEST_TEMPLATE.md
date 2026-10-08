@@ -1,3 +1,5 @@
+<!-- Title format: <type>: <what it does> (#<issue>), e.g. feat: add retake button to the capture screen (#12). See docs/WORKFLOW.md -->
+
 ## What
 
 <!-- What does this pull request change? -->
@@ -27,4 +29,5 @@ Closes #
 - [ ] Screen text is available in Sinhala, Tamil and English, if I changed any.
 - [ ] **No real data**: no real letters, forms, names, numbers, asset lists, letterheads, emblems or seals. Only invented test data.
 - [ ] No passwords, keys or tokens.
-- [ ] My commit messages are short, clear and in the present tense.
+- [ ] The title and my commit messages follow the format in docs/WORKFLOW.md.
+- [ ] My branch is named `<type>/<issue>-<short-name>` and is up to date with `main`.

@@ -73,6 +73,9 @@ This is the most important rule in the project.
 - Say what the change does and, if it is not obvious, why.
 - One idea per commit. Avoid messages like "update", "fix" or "changes".
 - If you paired with someone, credit them with a `Co-authored-by:` line.
+- **Format:** `<type>: <what it does> (#<issue>)`, for example `feat: add retake button to the capture screen (#12)`. Types, branch names and a full worked example are in [docs/WORKFLOW.md](docs/WORKFLOW.md).
+- **Commit template:** run `git config commit.template .gitmessage` once, and every commit starts with a reminder of the format.
+- **Reviewing:** see [REVIEWING.md](REVIEWING.md) for what to check and how to comment.
 
 ## 11. Bigger changes
 
