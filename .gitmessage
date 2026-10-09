@@ -1,0 +1,11 @@
+# <type>: <what this commit does, in the present tense> (#<issue>)
+#
+# Types: feat (new feature), fix (bug fix), docs (documentation),
+#        test (tests), refactor (same behaviour, better code),
+#        style (formatting only), chore (housekeeping)
+#
+# Keep the first line to about 50 characters. No full stop at the end.
+# Leave one blank line, then explain WHY if it is not obvious.
+#
+# If you worked with someone, credit them on the last line:
+# Co-authored-by: Name <their-github-email>

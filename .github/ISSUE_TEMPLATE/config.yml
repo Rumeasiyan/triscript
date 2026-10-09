@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem privately
+    url: https://github.com/Rumeasiyan/triscript/security/advisories/new
+    about: Please do not report security problems in public issues.
+  - name: Read the contributing guide
+    url: https://github.com/Rumeasiyan/triscript/blob/main/CONTRIBUTING.md
+    about: How to pick an issue, branch, and open a pull request.

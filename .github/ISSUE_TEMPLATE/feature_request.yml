@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest something new or a change to how something works.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe what the person using TRISCRIPT needs, not how to build it. The team decides how.
+  - type: textarea
+    id: need
+    attributes:
+      label: Who needs this and why
+      description: "For example: As a person using it, I want to ..., so that ..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: How we will know it is done
+      description: A short list of things that must be true when this is finished.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Other ways you considered
+      description: Optional. Any other approach, and why you prefer this one.
+  - type: dropdown
+    id: language
+    attributes:
+      label: Languages affected
+      multiple: true
+      options:
+        - Sinhala
+        - Tamil
+        - English
+        - All three
+        - Not relevant
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues and this is not already there.
+          required: true
+        - label: This request contains no real data, passwords or keys.
+          required: true

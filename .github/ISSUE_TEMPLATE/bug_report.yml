@@ -1,0 +1,60 @@
+name: Bug report
+description: Something does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Please use only invented test data in this report: never attach real letters, forms, names, numbers or asset lists.
+        Security problems must not be reported here. Use the Security tab and choose "Report a vulnerability".
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the problem in a few sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Number each step so someone else can follow it exactly.
+      placeholder: |
+        1. Open ...
+        2. Scan ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: devices
+    attributes:
+      label: Phone and computer
+      description: For example "Android phone, Chrome browser; Windows laptop, Firefox browser".
+  - type: dropdown
+    id: language
+    attributes:
+      label: Screen or document language
+      multiple: true
+      options:
+        - Sinhala
+        - Tamil
+        - English
+        - Not relevant
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Optional. Make sure they show only test data.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: This report contains no real data, passwords or keys.
+          required: true
