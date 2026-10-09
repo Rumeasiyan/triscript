@@ -94,8 +94,9 @@ export function ReviewForm({ result, photoUrl, onSave, onStartOver }: Props) {
             {t.review.demoNotice}
           </p>
         )}
-        <p>{t.review.intro}</p>
+        <p className="muted">{t.review.intro}</p>
 
+        <div className="fields-grid">
         {FIELD_KEYS.map((key) => {
           const id = `${baseId}-${key}`;
           const level: ConfidenceLevel | "edited" = edited.has(key)
@@ -139,6 +140,7 @@ export function ReviewForm({ result, photoUrl, onSave, onStartOver }: Props) {
             </div>
           );
         })}
+        </div>
 
         <div className="confirm">
           <label className="check">
@@ -154,8 +156,8 @@ export function ReviewForm({ result, photoUrl, onSave, onStartOver }: Props) {
             <span>{t.review.confirmLabel}</span>
           </label>
           {showConfirmError && !confirmed && (
-            <p id={`${baseId}-err`} role="alert" className="error-text">
-              {t.review.mustConfirm}
+            <p id={`${baseId}-err`} role="alert" className="error-text" style={{ marginTop: "0.5rem" }}>
+              ⚠ {t.review.mustConfirm}
             </p>
           )}
         </div>

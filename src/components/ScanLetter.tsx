@@ -210,11 +210,11 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
 
       {stage === "idle" && (
         <div className="stack">
-          <p>{t.pair.instruction}</p>
+          <p className="lead" style={{ fontSize: "1rem" }}>{t.pair.instruction}</p>
           <p className="muted">{t.pair.networkHint}</p>
           <div className="actions">
             <button type="button" className="btn btn-primary" onClick={start}>
-              {t.pair.start}
+              <span aria-hidden="true">⬛</span> {t.pair.start}
             </button>
             <button type="button" className="btn" onClick={typeInstead}>
               {t.pair.manual}
@@ -324,8 +324,11 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
 
       {stage === "saved" && (
         <div className="stack" role="status">
-          <h3>✓ {t.review.saved}</h3>
-          <p>{t.review.savedBody}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+            <span style={{ fontSize: "1.5rem" }}>✅</span>
+            <h3 style={{ margin: 0 }}>{t.review.saved}</h3>
+          </div>
+          <p className="muted">{t.review.savedBody}</p>
           <div className="actions">
             <button type="button" className="btn btn-primary" onClick={start}>
               {t.review.scanAnother}

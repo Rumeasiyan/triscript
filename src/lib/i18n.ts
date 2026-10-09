@@ -18,6 +18,7 @@ const en = {
   nav: { home: "Home", demo: "Scan a letter", register: "Letter register", about: "About" },
 
   home: {
+    heroEyebrow: "Sinhala · Tamil · English",
     heroTitle: "Scan a letter with your phone. See the details on your computer.",
     heroBody:
       "No typing and no app to install. Scan a code on your computer, photograph the paper with your phone, and the details fill in for you to check.",
@@ -193,6 +194,7 @@ const si: Dict = {
   nav: { home: "මුල් පිටුව", demo: "ලිපියක් ස්කෑන් කරන්න", register: "ලිපි ලේඛනය", about: "ගැන" },
 
   home: {
+    heroEyebrow: "සිංහල · தமிழ் · English",
     heroTitle: "ඔබේ දුරකථනයෙන් ලිපිය ස්කෑන් කරන්න. විස්තර පරිගණකයේ බලන්න.",
     heroBody:
       "ටයිප් කිරීමක් හෝ යෙදුමක් ස්ථාපනය කිරීමක් අවශ්‍ය නැත. පරිගණකයේ ඇති කේතය ස්කෑන් කර, දුරකථනයෙන් කඩදාසිය ඡායාරූප ගත කරන්න. විස්තර ඔබට පරීක්ෂා කිරීමට පිරී පෙනේ.",
@@ -366,6 +368,7 @@ const ta: Dict = {
   nav: { home: "முகப்பு", demo: "கடிதத்தை ஸ்கேன் செய்", register: "கடிதப் பதிவேடு", about: "பற்றி" },
 
   home: {
+    heroEyebrow: "சிங்களம் · தமிழ் · ஆங்கிலம்",
     heroTitle: "உங்கள் தொலைபேசியால் கடிதத்தை ஸ்கேன் செய்யுங்கள். விவரங்களை கணினியில் பாருங்கள்.",
     heroBody:
       "தட்டச்சு தேவையில்லை, செயலியை நிறுவவும் தேவையில்லை. கணினியில் உள்ள குறியீட்டை ஸ்கேன் செய்து, தொலைபேசியால் தாளைப் புகைப்படம் எடுங்கள். விவரங்கள் நீங்கள் சரிபார்க்க நிரப்பப்படும்.",

@@ -24,9 +24,7 @@ export function SiteHeader({ minimal = false }: { minimal?: boolean }) {
       <header className="site-header">
         <div className="container header-row">
           <Link href="/" className="brand" aria-label={t.appName}>
-            <span className="brand-mark" aria-hidden="true">
-              ꙮ
-            </span>
+            <span className="brand-icon" aria-hidden="true">T</span>
             {t.appName}
           </Link>
           {!minimal && (

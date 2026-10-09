@@ -43,7 +43,10 @@ export default function RegisterPage() {
         <section className="card" aria-labelledby="list-title">
           <h2 id="list-title">{t.register.listTitle}</h2>
           {letters.length === 0 ? (
-            <p className="muted">{t.register.empty}</p>
+            <div className="empty-state">
+              <div className="empty-state-icon" aria-hidden="true">📄</div>
+              <p>{t.register.empty}</p>
+            </div>
           ) : (
             <>
               <div className="table-wrap">
