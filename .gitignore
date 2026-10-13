@@ -1,0 +1,34 @@
+# Next.js
+node_modules
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
+
+# Environment — never commit secrets
+.env*.local
+.env
+backend/.env
+
+# Startup scripts that may contain API keys
+start.bat
+
+# Go compiled binaries
+backend/*.exe
+backend/triscript-backend
+backend/triscript-backend.exe
+
+# Go test output
+*.test
+
+# Photo storage — private uploaded files must not be committed
+backend/photo_storage/
+photo_storage/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+*.swp
