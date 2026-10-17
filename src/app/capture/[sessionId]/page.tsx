@@ -142,12 +142,13 @@ export default function CapturePage() {
 
   const finish = useCallback(() => setPhase("sent"), []);
 
-  /* Shared hidden file input — no capture attribute */
+  /* Shared hidden file input — camera only, no gallery */
   const fileInput = (
     <input
       ref={inputRef}
       type="file"
       accept="image/*"
+      capture="environment"
       hidden
       onChange={(e) => onFile(e.target.files?.[0])}
     />

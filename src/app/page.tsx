@@ -30,11 +30,8 @@ export default function HomePage() {
             <Link href="/demo" className="btn btn-primary">
               {t.home.tryDemo}
             </Link>
-            <Link href="/register" className="btn">
-              {t.home.tryRegister}
-            </Link>
-            <Link href="/about" className="btn btn-ghost">
-              {t.nav.about} →
+            <Link href="/letters" className="btn">
+              {t.nav.letters}
             </Link>
           </div>
         </section>

@@ -13,7 +13,6 @@ export function SiteHeader({ minimal = false }: { minimal?: boolean }) {
     { href: "/", label: t.nav.home },
     { href: "/demo", label: t.nav.demo },
     { href: "/letters", label: t.nav.letters },
-    { href: "/about", label: t.nav.about },
   ];
 
   return (
