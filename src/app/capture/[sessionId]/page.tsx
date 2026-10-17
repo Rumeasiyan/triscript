@@ -5,8 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import { SiteHeader } from "@/components/SiteHeader";
 import { fmt } from "@/lib/i18n";
-import { shrinkImage } from "@/lib/image";
-import { enhancePhoto } from "@/lib/imagePreprocess";
+import { preparePhoto } from "@/lib/image";
 
 type Phase =
   | "checking"
@@ -75,9 +74,8 @@ export default function CapturePage() {
   const onFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
     setPhase("preparing");
-    // Resize then enhance for better OCR quality
-    const resized = await shrinkImage(file);
-    const blob = await enhancePhoto(resized);
+    // Single-pass: resize + enhance in one canvas to minimise memory use
+    const blob = await preparePhoto(file);
     blobRef.current = blob;
     setPreviewUrl(URL.createObjectURL(blob));
     setPhase("preview");
