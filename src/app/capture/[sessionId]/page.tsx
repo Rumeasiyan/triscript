@@ -8,9 +8,19 @@ import { fmt } from "@/lib/i18n";
 import { shrinkImage } from "@/lib/image";
 import { enhancePhoto } from "@/lib/imagePreprocess";
 
-type Phase = "checking" | "ready" | "preparing" | "preview" | "sending" | "sent" | "gone" | "error";
+type Phase =
+  | "checking"
+  | "ready"
+  | "preparing"
+  | "preview"
+  | "sending"
+  | "sent-page"   // one page sent, can add more
+  | "sent"        // all done
+  | "gone"
+  | "error";
 
 const MAX_ATTEMPTS = 4;
+const MAX_PAGES = 5;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function CapturePage() {
@@ -20,6 +30,7 @@ export default function CapturePage() {
 
   const [phase, setPhase] = useState<Phase>("checking");
   const [attempt, setAttempt] = useState(1);
+  const [pagesSent, setPagesSent] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const blobRef = useRef<Blob | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,8 +45,13 @@ export default function CapturePage() {
         if (!alive) return;
         if (res.status === 404) return setPhase("gone");
         if (!res.ok) return setPhase("error");
-        const json = (await res.json()) as { status: "waiting" | "photo" };
-        setPhase(json.status === "photo" ? "sent" : "ready");
+        const json = (await res.json()) as { status: "waiting" | "photo"; photoCount: number };
+        if (json.status === "photo") {
+          setPagesSent(json.photoCount);
+          setPhase(json.photoCount >= MAX_PAGES ? "sent" : "sent-page");
+        } else {
+          setPhase("ready");
+        }
       } catch {
         if (alive) setPhase("error");
       }
@@ -45,7 +61,7 @@ export default function CapturePage() {
     };
   }, [sessionId]);
 
-  // Move focus to the heading when the screen changes, so screen readers announce it.
+  // Move focus to the heading when the screen changes.
   useEffect(() => {
     headingRef.current?.focus();
   }, [phase]);
@@ -59,7 +75,7 @@ export default function CapturePage() {
   const onFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
     setPhase("preparing");
-    // Resize first, then enhance (contrast + sharpness) for better OCR
+    // Resize then enhance for better OCR quality
     const resized = await shrinkImage(file);
     const blob = await enhancePhoto(resized);
     blobRef.current = blob;
@@ -71,8 +87,8 @@ export default function CapturePage() {
   const retake = useCallback(() => {
     blobRef.current = null;
     setPreviewUrl(null);
-    setPhase("ready");
-  }, []);
+    setPhase(pagesSent > 0 ? "sent-page" : "ready");
+  }, [pagesSent]);
 
   const send = useCallback(async () => {
     const blob = blobRef.current;
@@ -86,9 +102,16 @@ export default function CapturePage() {
           headers: { "Content-Type": blob.type || "image/jpeg" },
           body: blob,
         });
-        if (res.status === 204 || res.status === 409) {
-          blobRef.current = null; // the phone keeps nothing
+        if (res.status === 204) {
+          blobRef.current = null;
           setPreviewUrl(null);
+          const next = pagesSent + 1;
+          setPagesSent(next);
+          setPhase(next >= MAX_PAGES ? "sent" : "sent-page");
+          return;
+        }
+        if (res.status === 409) {
+          // Too many pages or duplicate — treat as done
           setPhase("sent");
           return;
         }
@@ -100,12 +123,21 @@ export default function CapturePage() {
       }
     }
     setPhase("error");
-  }, [sessionId]);
+  }, [sessionId, pagesSent]);
+
+  const finish = useCallback(() => {
+    setPhase("sent");
+  }, []);
+
+  const takeAnother = useCallback(() => {
+    setPhase("ready");
+  }, []);
 
   return (
     <>
       <SiteHeader minimal />
       <main id="main" className="container page capture">
+
         {phase === "checking" && (
           <p role="status" className="status">
             <span className="spinner" aria-hidden="true" /> {t.capture.checking}
@@ -177,6 +209,35 @@ export default function CapturePage() {
           </div>
         )}
 
+        {phase === "sent-page" && (
+          <div className="stack">
+            <h1 ref={headingRef} tabIndex={-1}>
+              ✓ {fmt(t.capture.pageSent, { n: pagesSent })}
+            </h1>
+            <p className="lead">{t.capture.addPagePrompt}</p>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(e) => void onFile(e.target.files?.[0])}
+            />
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-primary btn-big"
+                onClick={() => inputRef.current?.click()}
+              >
+                📷 {t.capture.addPage}
+              </button>
+              <button type="button" className="btn btn-big" onClick={finish}>
+                {t.capture.doneAddingPages}
+              </button>
+            </div>
+          </div>
+        )}
+
         {phase === "sent" && (
           <div className="stack" role="status">
             <h1 ref={headingRef} tabIndex={-1}>
@@ -205,7 +266,7 @@ export default function CapturePage() {
               <button
                 type="button"
                 className="btn btn-primary btn-big"
-                onClick={() => (blobRef.current ? void send() : retake())}
+                onClick={() => (blobRef.current ? void send() : takeAnother())}
               >
                 {t.capture.tryAgain}
               </button>

@@ -15,15 +15,29 @@ import { ReviewForm } from "./ReviewForm";
 
 /**
  * <ScanLetter /> is the reusable piece: drop it into any screen where a person
- * enters a letter. It pairs a phone by QR code, receives the photo, reads it,
- * lets the person check and correct every field, and calls onConfirm with the
- * confirmed values. It never calls onConfirm without the person pressing Save.
+ * enters a letter. It pairs a phone by QR code, receives the photo(s), reads
+ * them, lets the person check and correct every field, and calls onConfirm with
+ * the confirmed values. It never calls onConfirm without the person pressing Save.
+ *
+ * Multi-page: after the first photo arrives the person can add more pages before
+ * proceeding to reading. Up to 5 pages per letter.
  */
 
-type Stage = "idle" | "starting" | "pairing" | "reading" | "review" | "saved" | "expired" | "error";
+type Stage =
+  | "idle"
+  | "starting"
+  | "pairing"
+  | "photo-received"   // at least one photo, phone still active
+  | "reading"
+  | "review"
+  | "saved"
+  | "expired"
+  | "error";
+
 type ErrorKind = "pair" | "read";
 
 const POLL_MS = 1500;
+const MAX_PAGES = 5;
 
 function formatTime(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -41,10 +55,11 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
   const [captureUrl, setCaptureUrl] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoCount, setPhotoCount] = useState(0);
   const [result, setResult] = useState<ReadResult | null>(null);
 
   const sessionIdRef = useRef<string | null>(null);
-  const photoBlobRef = useRef<Blob | null>(null);
+  const photoBlobsRef = useRef<Blob[]>([]);
   const photoUrlRef = useRef<string | null>(null);
 
   const closeSession = useCallback(() => {
@@ -55,14 +70,15 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
     }
   }, []);
 
-  const dropPhoto = useCallback(() => {
+  const dropPhotos = useCallback(() => {
     if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
     photoUrlRef.current = null;
-    photoBlobRef.current = null;
+    photoBlobsRef.current = [];
     setPhotoUrl(null);
+    setPhotoCount(0);
   }, []);
 
-  // Delete the session and photo if the person leaves.
+  // Delete the session and photos if the person leaves.
   useEffect(() => {
     const onHide = () => closeSession();
     window.addEventListener("pagehide", onHide);
@@ -74,9 +90,12 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
   }, [closeSession]);
 
   const runReader = useCallback(
-    async (blob: Blob) => {
+    async (blobs: Blob[]) => {
       setStage("reading");
       try {
+        // For multi-page letters, combine all pages into one blob by stitching them
+        // vertically on a canvas — the reader sees a single tall image.
+        const blob = blobs.length === 1 ? blobs[0] : await stitchPages(blobs);
         const r = await readLetter(blob, lang);
         setResult(r);
         setStage("review");
@@ -88,18 +107,28 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
     [lang],
   );
 
-  const receivePhoto = useCallback(
-    async (id: string) => {
+  /** Fetch all photos from the server and show the first as preview. */
+  const receivePhotos = useCallback(
+    async (id: string, count: number) => {
       setStage("reading");
       try {
-        const res = await fetch(`/api/session/${id}/photo`, { cache: "no-store" });
-        if (!res.ok) throw new Error("photo");
-        const blob = await res.blob();
-        photoBlobRef.current = blob;
-        const url = URL.createObjectURL(blob);
+        const blobs: Blob[] = [];
+        for (let page = 1; page <= count; page++) {
+          const res = await fetch(`/api/session/${id}/photo?page=${page}`, {
+            cache: "no-store",
+          });
+          if (!res.ok) break;
+          blobs.push(await res.blob());
+        }
+        if (blobs.length === 0) throw new Error("no photos");
+
+        photoBlobsRef.current = blobs;
+        const url = URL.createObjectURL(blobs[0]);
         photoUrlRef.current = url;
         setPhotoUrl(url);
-        await runReader(blob);
+        setPhotoCount(blobs.length);
+
+        await runReader(blobs);
       } catch {
         setErrorKind("read");
         setStage("error");
@@ -110,7 +139,7 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
 
   const start = useCallback(async () => {
     closeSession();
-    dropPhoto();
+    dropPhotos();
     setResult(null);
     setStage("starting");
     try {
@@ -130,13 +159,14 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
       setErrorKind("pair");
       setStage("error");
     }
-  }, [closeSession, dropPhoto]);
+  }, [closeSession, dropPhotos]);
 
-  // While pairing: tick the countdown and poll for the photo.
+  // While pairing: tick the countdown and poll for photos.
   useEffect(() => {
     if (stage !== "pairing" || !session) return;
     let cancelled = false;
     let busy = false;
+    let lastCount = 0;
 
     const tick = setInterval(() => {
       const n = Date.now();
@@ -158,10 +188,15 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
           return;
         }
         if (res.ok) {
-          const json = (await res.json()) as { status: "waiting" | "photo" };
-          if (json.status === "photo") {
-            cancelled = true;
-            void receivePhoto(session.id);
+          const json = (await res.json()) as {
+            status: "waiting" | "photo";
+            photoCount: number;
+          };
+          if (json.status === "photo" && json.photoCount > lastCount) {
+            lastCount = json.photoCount;
+            setPhotoCount(json.photoCount);
+            // Transition to "photo-received" so the person can add more pages
+            setStage("photo-received");
           }
         }
       } catch {
@@ -176,27 +211,66 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
       clearInterval(tick);
       clearInterval(poll);
     };
-  }, [stage, session, receivePhoto, closeSession]);
+  }, [stage, session, closeSession]);
+
+  // While in photo-received: keep polling so the count updates when more arrive.
+  useEffect(() => {
+    if (stage !== "photo-received" || !session) return;
+    let cancelled = false;
+    let busy = false;
+
+    const poll = setInterval(async () => {
+      if (busy || cancelled) return;
+      busy = true;
+      try {
+        const res = await fetch(`/api/session/${session.id}`, { cache: "no-store" });
+        if (cancelled) return;
+        if (res.ok) {
+          const json = (await res.json()) as {
+            status: "waiting" | "photo";
+            photoCount: number;
+          };
+          setPhotoCount(json.photoCount);
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        busy = false;
+      }
+    }, POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, [stage, session]);
+
+  function proceedToRead() {
+    const id = sessionIdRef.current ?? session?.id;
+    if (!id) return;
+    void receivePhotos(id, photoCount);
+  }
 
   function typeInstead() {
     closeSession();
-    dropPhoto();
+    dropPhotos();
     setResult({ fields: emptyFields(), demo: false });
     setStage("review");
   }
 
   function reset() {
     closeSession();
-    dropPhoto();
+    dropPhotos();
     setResult(null);
     setSession(null);
+    setPhotoCount(0);
     setStage("idle");
   }
 
   function save(values: FieldValues) {
     onConfirm(values);
-    closeSession(); // the photo is deleted on the server here
-    dropPhoto();
+    closeSession(); // the photos are deleted on the server here
+    dropPhotos();
     setStage("saved");
   }
 
@@ -262,6 +336,33 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
         </div>
       )}
 
+      {stage === "photo-received" && (
+        <div className="stack">
+          <p role="status" className="status" style={{ color: "var(--success)" }}>
+            ✓ {fmt(t.pair.pagesReceived, { n: photoCount })}
+          </p>
+          <p className="muted">{t.pair.addPageHint}</p>
+          <div className="actions">
+            <button type="button" className="btn btn-primary" onClick={proceedToRead}>
+              {t.pair.readNow}
+            </button>
+            {photoCount < MAX_PAGES && (
+              <p className="muted" style={{ fontSize: "0.875rem" }}>
+                {t.pair.addPagePhone}
+              </p>
+            )}
+            <button type="button" className="btn" onClick={reset}>
+              {t.pair.cancel}
+            </button>
+          </div>
+          {session && (
+            <p className="countdown" aria-live="off">
+              {fmt(t.pair.expiresIn, { time: formatTime(remaining) })}
+            </p>
+          )}
+        </div>
+      )}
+
       {stage === "expired" && (
         <div className="stack" role="alert">
           <p>{t.pair.expired}</p>
@@ -298,11 +399,14 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
           </p>
           {errorKind === "read" && <p>{t.review.errorBody}</p>}
           <div className="actions">
-            {errorKind === "read" && photoBlobRef.current ? (
+            {errorKind === "read" && photoBlobsRef.current.length > 0 ? (
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => photoBlobRef.current && runReader(photoBlobRef.current)}
+                onClick={() => {
+                  const blobs = photoBlobsRef.current;
+                  if (blobs.length > 0) void runReader(blobs);
+                }}
               >
                 {t.review.retry}
               </button>
@@ -338,4 +442,48 @@ export function ScanLetter({ onConfirm }: { onConfirm: (values: FieldValues) => 
       )}
     </section>
   );
+}
+
+// ─── Multi-page stitch ───────────────────────────────────────────────────────
+
+/**
+ * Stitch multiple page images into a single tall JPEG for the OCR reader.
+ * Pages are placed top to bottom, separated by a thin white gap.
+ */
+async function stitchPages(blobs: Blob[]): Promise<Blob> {
+  const GAP = 20;
+  try {
+    const bitmaps = await Promise.all(
+      blobs.map((b) => createImageBitmap(b, { imageOrientation: "from-image" })),
+    );
+    const width = Math.max(...bitmaps.map((b) => b.width));
+    const totalHeight =
+      bitmaps.reduce((s, b) => s + b.height, 0) + GAP * (bitmaps.length - 1);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = totalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmaps.forEach((b) => b.close());
+      return blobs[0];
+    }
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, totalHeight);
+
+    let y = 0;
+    for (const bitmap of bitmaps) {
+      ctx.drawImage(bitmap, 0, y, bitmap.width, bitmap.height);
+      y += bitmap.height + GAP;
+      bitmap.close();
+    }
+
+    const result = await new Promise<Blob | null>((res) =>
+      canvas.toBlob(res, "image/jpeg", 0.88),
+    );
+    return result ?? blobs[0];
+  } catch {
+    return blobs[0];
+  }
 }

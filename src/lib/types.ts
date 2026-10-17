@@ -61,5 +61,6 @@ export interface SessionInfo {
 
 export interface SessionPoll {
   status: SessionStatus;
+  photoCount: number;
   expiresAt: number;
 }
