@@ -12,13 +12,13 @@ export function SiteHeader({ minimal = false }: { minimal?: boolean }) {
   const links = [
     { href: "/", label: t.nav.home },
     { href: "/demo", label: t.nav.demo },
-    { href: "/register", label: t.nav.register },
+    { href: "/letters", label: t.nav.letters },
     { href: "/about", label: t.nav.about },
   ];
 
   return (
     <>
-      <a href="#main" className="skip-link">
+      <a href="#main" className="skip-link sr-only">
         {t.skipToContent}
       </a>
       <header className="site-header">

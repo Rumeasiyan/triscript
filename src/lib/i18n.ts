@@ -15,14 +15,14 @@ const en = {
   tagline: "Turn a photo of a letter into filled-in fields, in Sinhala, Tamil and English.",
   skipToContent: "Skip to main content",
   language: "Language",
-  nav: { home: "Home", demo: "Scan a letter", register: "Letter register", about: "About" },
+  nav: { home: "Home", demo: "Scan a letter", register: "Letter register", letters: "Saved letters", about: "About" },
 
   home: {
     heroEyebrow: "Sinhala · Tamil · English",
     heroTitle: "Scan a letter with your phone. See the details on your computer.",
     heroBody:
       "No typing and no app to install. Scan a code on your computer, photograph the paper with your phone, and the details fill in for you to check.",
-    tryDemo: "Try the scan demo",
+    tryDemo: "Scan here",
     tryRegister: "See it in a letter register",
     howTitle: "How it works",
     step1Title: "Scan the code",
@@ -142,6 +142,27 @@ const en = {
     clear: "Clear list",
   },
 
+  letters: {
+    title: "Saved letters",
+    intro: "All letters scanned and saved in this session.",
+    empty: "No letters saved yet.",
+    emptyHint: "Go to the scan page to scan and save a letter.",
+    scanNew: "Scan a letter",
+    columns: { date: "Date", subject: "Subject", from: "From", ref: "Reference" },
+    view: "View",
+    edit: "Edit",
+    delete: "Delete",
+    deleteConfirm: "Delete this letter?",
+    back: "Back to list",
+    editTitle: "Edit letter",
+    saveChanges: "Save changes",
+    cancel: "Cancel",
+    deleted: "Letter deleted.",
+    saved: "Changes saved.",
+    exportCsv: "Export CSV",
+    noSubject: "(no subject)",
+  },
+
   footer: {
     built: "Built in the open by the Eastern Province IT Volunteer Programme, Sri Lanka.",
     status: "Status: starting. Open source.",
@@ -199,7 +220,7 @@ const si: Dict = {
   tagline: "ලිපියක ඡායාරූපයක් සිංහල, දෙමළ සහ ඉංග්‍රීසියෙන් පුරවන ලද ක්ෂේත්‍ර බවට පත් කරයි.",
   skipToContent: "ප්‍රධාන අන්තර්ගතයට යන්න",
   language: "භාෂාව",
-  nav: { home: "මුල් පිටුව", demo: "ලිපියක් ස්කෑන් කරන්න", register: "ලිපි ලේඛනය", about: "ගැන" },
+  nav: { home: "මුල් පිටුව", demo: "ලිපියක් ස්කෑන් කරන්න", register: "ලිපි ලේඛනය", letters: "සුරකින ලද ලිපි", about: "ගැන" },
 
   home: {
     heroEyebrow: "සිංහල · தமிழ் · English",
@@ -326,6 +347,27 @@ const si: Dict = {
     clear: "ලැයිස්තුව මකන්න",
   },
 
+  letters: {
+    title: "සුරකින ලද ලිපි",
+    intro: "මෙම සැසියේ ස්කෑන් කර සුරකින ලද සියලු ලිපි.",
+    empty: "තවමත් ලිපි සුරකින ලද නැත.",
+    emptyHint: "ලිපියක් ස්කෑන් කිරීමට ස්කෑන් පිටුවට යන්න.",
+    scanNew: "ලිපියක් ස්කෑන් කරන්න",
+    columns: { date: "දිනය", subject: "විෂය", from: "එවූ අය", ref: "යොමුව" },
+    view: "බලන්න",
+    edit: "සංස්කරණය",
+    delete: "මකන්න",
+    deleteConfirm: "මෙම ලිපිය මකන්නද?",
+    back: "ලැයිස්තුවට ආපසු",
+    editTitle: "ලිපිය සංස්කරණය කරන්න",
+    saveChanges: "වෙනස්කම් සුරකින්න",
+    cancel: "අවලංගු කරන්න",
+    deleted: "ලිපිය මකා දමන ලදී.",
+    saved: "වෙනස්කම් සුරකින ලදී.",
+    exportCsv: "CSV ලෙස අපනයනය කරන්න",
+    noSubject: "(විෂය නොමැත)",
+  },
+
   footer: {
     built: "ශ්‍රී ලංකාවේ නැගෙනහිර පළාතේ තොරතුරු තාක්ෂණ ස්වේච්ඡා සේවා වැඩසටහන විසින් විවෘතව ගොඩනඟන ලදී.",
     status: "තත්ත්වය: ආරම්භක අවධිය. විවෘත මූලාශ්‍ර.",
@@ -381,7 +423,7 @@ const ta: Dict = {
   tagline: "கடிதத்தின் புகைப்படத்தை சிங்களம், தமிழ், ஆங்கிலத்தில் நிரப்பப்பட்ட புலங்களாக மாற்றுகிறது.",
   skipToContent: "முதன்மை உள்ளடக்கத்திற்குச் செல்லவும்",
   language: "மொழி",
-  nav: { home: "முகப்பு", demo: "கடிதத்தை ஸ்கேன் செய்", register: "கடிதப் பதிவேடு", about: "பற்றி" },
+  nav: { home: "முகப்பு", demo: "கடிதத்தை ஸ்கேன் செய்", register: "கடிதப் பதிவேடு", letters: "சேமிக்கப்பட்ட கடிதங்கள்", about: "பற்றி" },
 
   home: {
     heroEyebrow: "சிங்களம் · தமிழ் · ஆங்கிலம்",
@@ -506,6 +548,27 @@ const ta: Dict = {
     empty: "இன்னும் கடிதங்கள் பதிவு செய்யப்படவில்லை.",
     columns: { date: "தேதி", subject: "பொருள்", from: "அனுப்புநர்", ref: "குறிப்பு" },
     clear: "பட்டியலை அழி",
+  },
+
+  letters: {
+    title: "சேமிக்கப்பட்ட கடிதங்கள்",
+    intro: "இந்த அமர்வில் ஸ்கேன் செய்து சேமிக்கப்பட்ட அனைத்து கடிதங்களும்.",
+    empty: "இன்னும் கடிதங்கள் சேமிக்கப்படவில்லை.",
+    emptyHint: "கடிதத்தை ஸ்கேன் செய்ய ஸ்கேன் பக்கத்திற்குச் செல்லுங்கள்.",
+    scanNew: "கடிதத்தை ஸ்கேன் செய்",
+    columns: { date: "தேதி", subject: "பொருள்", from: "அனுப்புநர்", ref: "குறிப்பு" },
+    view: "பார்",
+    edit: "திருத்து",
+    delete: "நீக்கு",
+    deleteConfirm: "இந்தக் கடிதத்தை நீக்கவா?",
+    back: "பட்டியலுக்குத் திரும்பு",
+    editTitle: "கடிதத்தைத் திருத்து",
+    saveChanges: "மாற்றங்களைச் சேமி",
+    cancel: "ரத்து செய்",
+    deleted: "கடிதம் நீக்கப்பட்டது.",
+    saved: "மாற்றங்கள் சேமிக்கப்பட்டன.",
+    exportCsv: "CSV ஆக ஏற்றுமதி செய்",
+    noSubject: "(பொருள் இல்லை)",
   },
 
   footer: {
