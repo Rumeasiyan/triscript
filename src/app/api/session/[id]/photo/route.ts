@@ -4,11 +4,14 @@ import { getSession, setPhoto } from "@/lib/store";
 export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" };
 
+type Params = Promise<{ id: string }>;
+
 /** Phone uploads the photo as the raw request body (image/jpeg, png or webp). */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Params }) {
+  const { id } = await params;
   const contentType = (req.headers.get("content-type") ?? "").split(";")[0].trim();
   const data = Buffer.from(await req.arrayBuffer());
-  const result = setPhoto(params.id, data, contentType);
+  const result = setPhoto(id, data, contentType);
 
   switch (result) {
     case "ok":
@@ -25,8 +28,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 }
 
 /** Computer fetches the photo to show it and to read it. */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const s = getSession(params.id);
+export async function GET(_req: Request, { params }: { params: Params }) {
+  const { id } = await params;
+  const s = getSession(id);
   if (!s?.photo) return NextResponse.json({ error: "none" }, { status: 404, headers: NO_STORE });
   return new NextResponse(new Uint8Array(s.photo.data), {
     headers: { "Content-Type": s.photo.contentType, ...NO_STORE },

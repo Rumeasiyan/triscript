@@ -1,0 +1,31 @@
+{
+  "name": "triscript",
+  "version": "0.1.0",
+  "description": "Turn a phone photo of a letter into filled-in fields — Sinhala, Tamil and English.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "next": ">=14"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/react": "^18.3.3",
+    "@types/node": "^20.14.0"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": ["triscript", "sinhala", "tamil", "ocr", "letter", "scan", "sri-lanka"]
+}
