@@ -7,14 +7,16 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { fmt } from "@/lib/i18n";
 
 /**
- * Phone capture page — deliberately zero-canvas.
+ * Phone capture page.
  *
- * Low-memory phones crash when the browser tries to decode a 12 MP photo
- * into a canvas (needs ~50 MB of RAM just for pixels). Instead:
- *   - Preview is shown straight from the File object URL (browser handles it
- *     natively, no JS decode needed).
- *   - Upload sends the original JPEG/HEIC from the file picker directly.
- *   - All resizing/enhancement happens on the server where memory is not scarce.
+ * No canvas, no image processing on the phone.
+ * The raw file from the picker is sent directly to the server.
+ *
+ * capture="environment" is intentionally NOT used — on low-memory Android
+ * phones it forces the browser to open the camera inline, which exhausts RAM
+ * and shows "unable to take photo due to low memory". Without it, the phone
+ * opens its native file picker which lets the user choose Camera or Gallery;
+ * the native camera app manages its own memory independently.
  */
 
 type Phase =
@@ -29,7 +31,7 @@ type Phase =
 
 const MAX_ATTEMPTS = 4;
 const MAX_PAGES = 5;
-const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB hard limit
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function CapturePage() {
@@ -42,12 +44,11 @@ export default function CapturePage() {
   const [pagesSent, setPagesSent] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const fileRef = useRef<File | null>(null);       // raw file from picker
-  const previewUrlRef = useRef<string | null>(null); // object URL to revoke
+  const fileRef = useRef<File | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
-  // Check session validity on mount
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -70,10 +71,8 @@ export default function CapturePage() {
     return () => { alive = false; };
   }, [sessionId]);
 
-  // Focus heading on phase change for screen readers
   useEffect(() => { headingRef.current?.focus(); }, [phase]);
 
-  // Revoke object URL when phase changes away from preview
   useEffect(() => {
     if (phase !== "preview" && previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current);
@@ -82,7 +81,6 @@ export default function CapturePage() {
     }
   }, [phase]);
 
-  // Clean up on unmount
   useEffect(() => {
     return () => {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -91,22 +89,13 @@ export default function CapturePage() {
 
   const onFile = useCallback((file: File | undefined) => {
     if (!file) return;
-
-    // Reject files that are absurdly large (> 20 MB)
-    if (file.size > MAX_FILE_BYTES) {
-      setPhase("error");
-      return;
-    }
-
-    // Revoke any previous preview URL
+    if (file.size > MAX_FILE_BYTES) { setPhase("error"); return; }
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-
     fileRef.current = file;
     const url = URL.createObjectURL(file);
     previewUrlRef.current = url;
     setPreviewUrl(url);
     setPhase("preview");
-
     if (inputRef.current) inputRef.current.value = "";
   }, []);
 
@@ -119,17 +108,12 @@ export default function CapturePage() {
     const file = fileRef.current;
     if (!file) return;
     setPhase("sending");
-
-    // Revoke preview URL before upload — frees memory on the phone
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
       setPreviewUrl(null);
     }
-
-    // Determine content type — HEIC from iPhones needs to be sent as-is
     const contentType = file.type || "image/jpeg";
-
     for (let n = 1; n <= MAX_ATTEMPTS; n++) {
       setAttempt(n);
       try {
@@ -138,7 +122,6 @@ export default function CapturePage() {
           headers: { "Content-Type": contentType },
           body: file,
         });
-
         if (res.status === 204) {
           fileRef.current = null;
           const next = pagesSent + 1;
@@ -159,6 +142,17 @@ export default function CapturePage() {
 
   const finish = useCallback(() => setPhase("sent"), []);
 
+  /* Shared hidden file input — no capture attribute */
+  const fileInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept="image/*"
+      hidden
+      onChange={(e) => onFile(e.target.files?.[0])}
+    />
+  );
+
   return (
     <>
       <SiteHeader minimal />
@@ -174,14 +168,7 @@ export default function CapturePage() {
           <div className="stack">
             <h1 ref={headingRef} tabIndex={-1}>{t.capture.title}</h1>
             <p className="lead">{t.capture.intro}</p>
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              hidden
-              onChange={(e) => onFile(e.target.files?.[0])}
-            />
+            {fileInput}
             <button
               type="button"
               className="btn btn-primary btn-big"
@@ -229,14 +216,7 @@ export default function CapturePage() {
               ✓ {fmt(t.capture.pageSent, { n: pagesSent })}
             </h1>
             <p className="lead">{t.capture.addPagePrompt}</p>
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              hidden
-              onChange={(e) => onFile(e.target.files?.[0])}
-            />
+            {fileInput}
             <div className="actions">
               <button
                 type="button"
