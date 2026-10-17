@@ -6,6 +6,7 @@ import { useI18n } from "@/components/I18nProvider";
 import { SiteHeader } from "@/components/SiteHeader";
 import { fmt } from "@/lib/i18n";
 import { shrinkImage } from "@/lib/image";
+import { enhancePhoto } from "@/lib/imagePreprocess";
 
 type Phase = "checking" | "ready" | "preparing" | "preview" | "sending" | "sent" | "gone" | "error";
 
@@ -58,7 +59,9 @@ export default function CapturePage() {
   const onFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
     setPhase("preparing");
-    const blob = await shrinkImage(file);
+    // Resize first, then enhance (contrast + sharpness) for better OCR
+    const resized = await shrinkImage(file);
+    const blob = await enhancePhoto(resized);
     blobRef.current = blob;
     setPreviewUrl(URL.createObjectURL(blob));
     setPhase("preview");

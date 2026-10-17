@@ -20,8 +20,20 @@ const NO_STORE = { "Cache-Control": "no-store" };
  * If OPENAI_API_KEY is set, sends the image to GPT-4o vision and parses the
  * reply.  Otherwise returns the built-in DEMO values so the whole flow works
  * without any external service.
+ *
+ * If TRISCRIPT_API_KEY is set, requests must include the header:
+ *   X-Triscript-Key: <value>
+ * This is useful when the reader endpoint is exposed to other apps.
  */
 export async function POST(req: Request) {
+  const requiredKey = process.env.TRISCRIPT_API_KEY;
+  if (requiredKey) {
+    const provided = req.headers.get("x-triscript-key");
+    if (!provided || provided !== requiredKey) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
+    }
+  }
+
   let formData: FormData;
   try {
     formData = await req.formData();
