@@ -85,6 +85,8 @@ const en = {
     error: "The photo could not be sent.",
     errorHint: "Check your connection and try again.",
     tryAgain: "Try again",
+    lowMemoryHint: "Camera not working?",
+    lowMemoryAction: "Choose from gallery",
     checking: "Checking the link…",
   },
 
@@ -291,6 +293,8 @@ const si: Dict = {
     error: "ඡායාරූපය යැවීමට නොහැකි විය.",
     errorHint: "ඔබේ සම්බන්ධතාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.",
     tryAgain: "නැවත උත්සාහ කරන්න",
+    lowMemoryHint: "කැමරාව වැඩ නොකරයිද?",
+    lowMemoryAction: "ගැලරියෙන් තෝරන්න",
     checking: "සබැඳිය පරීක්ෂා කරමින්…",
   },
 
@@ -495,6 +499,8 @@ const ta: Dict = {
     error: "புகைப்படத்தை அனுப்ப முடியவில்லை.",
     errorHint: "உங்கள் இணைப்பைச் சரிபார்த்து மீண்டும் முயலுங்கள்.",
     tryAgain: "மீண்டும் முயலுங்கள்",
+    lowMemoryHint: "கேமரா வேலை செய்யவில்லையா?",
+    lowMemoryAction: "கேலரியிலிருந்து தேர்வு செய்",
     checking: "இணைப்பைச் சரிபார்க்கிறது…",
   },
 

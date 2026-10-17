@@ -6,19 +6,6 @@ import { useI18n } from "@/components/I18nProvider";
 import { SiteHeader } from "@/components/SiteHeader";
 import { fmt } from "@/lib/i18n";
 
-/**
- * Phone capture page.
- *
- * No canvas, no image processing on the phone.
- * The raw file from the picker is sent directly to the server.
- *
- * capture="environment" is intentionally NOT used — on low-memory Android
- * phones it forces the browser to open the camera inline, which exhausts RAM
- * and shows "unable to take photo due to low memory". Without it, the phone
- * opens its native file picker which lets the user choose Camera or Gallery;
- * the native camera app manages its own memory independently.
- */
-
 type Phase =
   | "checking"
   | "ready"
@@ -44,9 +31,11 @@ export default function CapturePage() {
   const [pagesSent, setPagesSent] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // Two inputs: one with capture (opens camera), one without (opens file picker)
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<File | null>(null);
   const previewUrlRef = useRef<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -96,7 +85,9 @@ export default function CapturePage() {
     previewUrlRef.current = url;
     setPreviewUrl(url);
     setPhase("preview");
-    if (inputRef.current) inputRef.current.value = "";
+    // Reset both inputs
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
   }, []);
 
   const retake = useCallback(() => {
@@ -142,16 +133,27 @@ export default function CapturePage() {
 
   const finish = useCallback(() => setPhase("sent"), []);
 
-  /* Shared hidden file input — camera only, no gallery */
-  const fileInput = (
-    <input
-      ref={inputRef}
-      type="file"
-      accept="image/*"
-      capture="environment"
-      hidden
-      onChange={(e) => onFile(e.target.files?.[0])}
-    />
+  // Two hidden inputs rendered once, reused across phases
+  const inputs = (
+    <>
+      {/* Primary: opens native camera directly */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={(e) => onFile(e.target.files?.[0])}
+      />
+      {/* Fallback: opens file picker (camera + gallery) for low-memory phones */}
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => onFile(e.target.files?.[0])}
+      />
+    </>
   );
 
   return (
@@ -169,14 +171,26 @@ export default function CapturePage() {
           <div className="stack">
             <h1 ref={headingRef} tabIndex={-1}>{t.capture.title}</h1>
             <p className="lead">{t.capture.intro}</p>
-            {fileInput}
+            {inputs}
             <button
               type="button"
               className="btn btn-primary btn-big"
-              onClick={() => inputRef.current?.click()}
+              onClick={() => cameraInputRef.current?.click()}
             >
               📷 {t.capture.take}
             </button>
+            {/* Low-memory fallback — shown below the main button */}
+            <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+              {t.capture.lowMemoryHint}{" "}
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ font: "inherit", fontSize: "0.85rem", padding: "0", border: "0", cursor: "pointer", color: "var(--primary)", background: "none", textDecoration: "underline" }}
+                onClick={() => galleryInputRef.current?.click()}
+              >
+                {t.capture.lowMemoryAction}
+              </button>
+            </p>
           </div>
         )}
 
@@ -217,12 +231,12 @@ export default function CapturePage() {
               ✓ {fmt(t.capture.pageSent, { n: pagesSent })}
             </h1>
             <p className="lead">{t.capture.addPagePrompt}</p>
-            {fileInput}
+            {inputs}
             <div className="actions">
               <button
                 type="button"
                 className="btn btn-primary btn-big"
-                onClick={() => inputRef.current?.click()}
+                onClick={() => cameraInputRef.current?.click()}
               >
                 📷 {t.capture.addPage}
               </button>
@@ -252,13 +266,21 @@ export default function CapturePage() {
           <div className="stack" role="alert">
             <h1 ref={headingRef} tabIndex={-1}>{t.capture.error}</h1>
             <p className="muted">{t.capture.errorHint}</p>
+            {inputs}
             <div className="actions">
               <button
                 type="button"
                 className="btn btn-primary btn-big"
-                onClick={() => fileRef.current ? void send() : setPhase("ready")}
+                onClick={() => fileRef.current ? void send() : cameraInputRef.current?.click()}
               >
                 {t.capture.tryAgain}
+              </button>
+              <button
+                type="button"
+                className="btn btn-big"
+                onClick={() => galleryInputRef.current?.click()}
+              >
+                {t.capture.lowMemoryAction}
               </button>
             </div>
           </div>
