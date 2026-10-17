@@ -5,21 +5,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import { SiteHeader } from "@/components/SiteHeader";
 import { fmt } from "@/lib/i18n";
-import { preparePhoto } from "@/lib/image";
+
+/**
+ * Phone capture page — deliberately zero-canvas.
+ *
+ * Low-memory phones crash when the browser tries to decode a 12 MP photo
+ * into a canvas (needs ~50 MB of RAM just for pixels). Instead:
+ *   - Preview is shown straight from the File object URL (browser handles it
+ *     natively, no JS decode needed).
+ *   - Upload sends the original JPEG/HEIC from the file picker directly.
+ *   - All resizing/enhancement happens on the server where memory is not scarce.
+ */
 
 type Phase =
   | "checking"
   | "ready"
-  | "preparing"
   | "preview"
   | "sending"
-  | "sent-page"   // one page sent, can add more
-  | "sent"        // all done
+  | "sent-page"
+  | "sent"
   | "gone"
   | "error";
 
 const MAX_ATTEMPTS = 4;
 const MAX_PAGES = 5;
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB hard limit
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function CapturePage() {
@@ -31,11 +41,13 @@ export default function CapturePage() {
   const [attempt, setAttempt] = useState(1);
   const [pagesSent, setPagesSent] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const blobRef = useRef<Blob | null>(null);
+
+  const fileRef = useRef<File | null>(null);       // raw file from picker
+  const previewUrlRef = useRef<string | null>(null); // object URL to revoke
   const inputRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
-  // Is the link still good?
+  // Check session validity on mount
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -44,7 +56,7 @@ export default function CapturePage() {
         if (!alive) return;
         if (res.status === 404) return setPhase("gone");
         if (!res.ok) return setPhase("error");
-        const json = (await res.json()) as { status: "waiting" | "photo"; photoCount: number };
+        const json = (await res.json()) as { status: string; photoCount: number };
         if (json.status === "photo") {
           setPagesSent(json.photoCount);
           setPhase(json.photoCount >= MAX_PAGES ? "sent" : "sent-page");
@@ -55,66 +67,88 @@ export default function CapturePage() {
         if (alive) setPhase("error");
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [sessionId]);
 
-  // Move focus to the heading when the screen changes.
+  // Focus heading on phase change for screen readers
+  useEffect(() => { headingRef.current?.focus(); }, [phase]);
+
+  // Revoke object URL when phase changes away from preview
   useEffect(() => {
-    headingRef.current?.focus();
+    if (phase !== "preview" && previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+      setPreviewUrl(null);
+    }
   }, [phase]);
 
+  // Clean up on unmount
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
-  }, [previewUrl]);
+  }, []);
 
-  const onFile = useCallback(async (file: File | undefined) => {
+  const onFile = useCallback((file: File | undefined) => {
     if (!file) return;
-    setPhase("preparing");
-    // Single-pass: resize + enhance in one canvas to minimise memory use
-    const blob = await preparePhoto(file);
-    blobRef.current = blob;
-    setPreviewUrl(URL.createObjectURL(blob));
+
+    // Reject files that are absurdly large (> 20 MB)
+    if (file.size > MAX_FILE_BYTES) {
+      setPhase("error");
+      return;
+    }
+
+    // Revoke any previous preview URL
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+
+    fileRef.current = file;
+    const url = URL.createObjectURL(file);
+    previewUrlRef.current = url;
+    setPreviewUrl(url);
     setPhase("preview");
+
     if (inputRef.current) inputRef.current.value = "";
   }, []);
 
   const retake = useCallback(() => {
-    blobRef.current = null;
-    setPreviewUrl(null);
+    fileRef.current = null;
     setPhase(pagesSent > 0 ? "sent-page" : "ready");
   }, [pagesSent]);
 
   const send = useCallback(async () => {
-    const blob = blobRef.current;
-    if (!blob) return;
+    const file = fileRef.current;
+    if (!file) return;
     setPhase("sending");
+
+    // Revoke preview URL before upload — frees memory on the phone
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+      setPreviewUrl(null);
+    }
+
+    // Determine content type — HEIC from iPhones needs to be sent as-is
+    const contentType = file.type || "image/jpeg";
+
     for (let n = 1; n <= MAX_ATTEMPTS; n++) {
       setAttempt(n);
       try {
         const res = await fetch(`/api/session/${sessionId}/photo`, {
           method: "POST",
-          headers: { "Content-Type": blob.type || "image/jpeg" },
-          body: blob,
+          headers: { "Content-Type": contentType },
+          body: file,
         });
+
         if (res.status === 204) {
-          blobRef.current = null;
-          setPreviewUrl(null);
+          fileRef.current = null;
           const next = pagesSent + 1;
           setPagesSent(next);
           setPhase(next >= MAX_PAGES ? "sent" : "sent-page");
           return;
         }
-        if (res.status === 409) {
-          // Too many pages or duplicate — treat as done
-          setPhase("sent");
-          return;
-        }
-        if (res.status === 404) return setPhase("gone");
-        if (res.status === 413 || res.status === 415) return setPhase("error");
+        if (res.status === 409) { setPhase("sent"); return; }
+        if (res.status === 404) { setPhase("gone"); return; }
+        if (res.status === 413 || res.status === 415) { setPhase("error"); return; }
         throw new Error(String(res.status));
       } catch {
         if (n < MAX_ATTEMPTS) await sleep(1000 * n);
@@ -123,13 +157,7 @@ export default function CapturePage() {
     setPhase("error");
   }, [sessionId, pagesSent]);
 
-  const finish = useCallback(() => {
-    setPhase("sent");
-  }, []);
-
-  const takeAnother = useCallback(() => {
-    setPhase("ready");
-  }, []);
+  const finish = useCallback(() => setPhase("sent"), []);
 
   return (
     <>
@@ -142,11 +170,9 @@ export default function CapturePage() {
           </p>
         )}
 
-        {(phase === "ready" || phase === "preparing") && (
+        {phase === "ready" && (
           <div className="stack">
-            <h1 ref={headingRef} tabIndex={-1}>
-              {t.capture.title}
-            </h1>
+            <h1 ref={headingRef} tabIndex={-1}>{t.capture.title}</h1>
             <p className="lead">{t.capture.intro}</p>
             <input
               ref={inputRef}
@@ -154,29 +180,21 @@ export default function CapturePage() {
               accept="image/*"
               capture="environment"
               hidden
-              onChange={(e) => void onFile(e.target.files?.[0])}
+              onChange={(e) => onFile(e.target.files?.[0])}
             />
             <button
               type="button"
               className="btn btn-primary btn-big"
-              disabled={phase === "preparing"}
               onClick={() => inputRef.current?.click()}
             >
               📷 {t.capture.take}
             </button>
-            {phase === "preparing" && (
-              <p role="status" className="status">
-                <span className="spinner" aria-hidden="true" /> {t.pair.starting}
-              </p>
-            )}
           </div>
         )}
 
         {phase === "preview" && previewUrl && (
           <div className="stack">
-            <h1 ref={headingRef} tabIndex={-1}>
-              {t.capture.title}
-            </h1>
+            <h1 ref={headingRef} tabIndex={-1}>{t.capture.title}</h1>
             <figure className="capture-preview">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={previewUrl} alt={t.capture.previewAlt} />
@@ -195,9 +213,7 @@ export default function CapturePage() {
 
         {phase === "sending" && (
           <div className="stack">
-            <h1 ref={headingRef} tabIndex={-1} className="sr-only">
-              {t.capture.sending}
-            </h1>
+            <h1 ref={headingRef} tabIndex={-1} className="sr-only">{t.capture.sending}</h1>
             <p role="status" className="status">
               <span className="spinner" aria-hidden="true" />{" "}
               {attempt > 1
@@ -219,7 +235,7 @@ export default function CapturePage() {
               accept="image/*"
               capture="environment"
               hidden
-              onChange={(e) => void onFile(e.target.files?.[0])}
+              onChange={(e) => onFile(e.target.files?.[0])}
             />
             <div className="actions">
               <button
@@ -238,18 +254,14 @@ export default function CapturePage() {
 
         {phase === "sent" && (
           <div className="stack" role="status">
-            <h1 ref={headingRef} tabIndex={-1}>
-              ✓ {t.capture.sent}
-            </h1>
+            <h1 ref={headingRef} tabIndex={-1}>✓ {t.capture.sent}</h1>
             <p className="lead">{t.capture.sentHint}</p>
           </div>
         )}
 
         {phase === "gone" && (
           <div className="stack" role="alert">
-            <h1 ref={headingRef} tabIndex={-1}>
-              {t.capture.expiredTitle}
-            </h1>
+            <h1 ref={headingRef} tabIndex={-1}>{t.capture.expiredTitle}</h1>
             <p className="lead">{t.capture.notFound}</p>
             <p className="muted">{t.capture.expiredBody}</p>
           </div>
@@ -257,20 +269,20 @@ export default function CapturePage() {
 
         {phase === "error" && (
           <div className="stack" role="alert">
-            <h1 ref={headingRef} tabIndex={-1}>
-              {t.capture.error}
-            </h1>
+            <h1 ref={headingRef} tabIndex={-1}>{t.capture.error}</h1>
+            <p className="muted">{t.capture.errorHint}</p>
             <div className="actions">
               <button
                 type="button"
                 className="btn btn-primary btn-big"
-                onClick={() => (blobRef.current ? void send() : takeAnother())}
+                onClick={() => fileRef.current ? void send() : setPhase("ready")}
               >
                 {t.capture.tryAgain}
               </button>
             </div>
           </div>
         )}
+
       </main>
     </>
   );

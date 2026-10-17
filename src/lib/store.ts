@@ -19,7 +19,7 @@ export interface StoredSession {
   photos: StoredPhoto[];
 }
 
-const MAX_PHOTO_BYTES = 6 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 20 * 1024 * 1024; // 20 MB — phone sends original file, no client resize
 const MAX_PAGES = 5;
 
 const globalForStore = globalThis as unknown as {
@@ -72,7 +72,7 @@ export function addPhoto(
   const session = getSession(id);
   if (!session) return "gone";
   if (session.photos.length >= MAX_PAGES) return "too-many-pages";
-  if (!/^image\/(jpeg|png|webp)$/.test(contentType)) return "bad-type";
+  if (!/^image\/(jpeg|png|webp|heic|heif)$/.test(contentType)) return "bad-type";
   if (data.byteLength === 0 || data.byteLength > MAX_PHOTO_BYTES) return "too-large";
   const page = session.photos.length + 1;
   session.photos.push({ data, contentType, page });

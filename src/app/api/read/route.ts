@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   }
 
   const contentType = imageFile.type || "image/jpeg";
-  if (!/^image\/(jpeg|png|webp)$/.test(contentType)) {
+  if (!/^image\/(jpeg|png|webp|heic|heif)$/.test(contentType)) {
     return NextResponse.json({ error: "bad-type" }, { status: 415, headers: NO_STORE });
   }
 
