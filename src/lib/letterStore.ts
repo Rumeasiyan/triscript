@@ -15,6 +15,19 @@ export interface SavedLetter {
 
 const STORAGE_KEY = "triscript.letters";
 
+/** Generate a unique ID. Uses crypto.randomUUID when available (HTTPS/localhost),
+ *  falls back to a timestamp+random string for plain HTTP on LAN IPs. */
+function makeId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* not in secure context */
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function load(): SavedLetter[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -40,7 +53,7 @@ export function getLetters(): SavedLetter[] {
 export function saveLetter(values: FieldValues): SavedLetter {
   const letters = load();
   const letter: SavedLetter = {
-    id: crypto.randomUUID(),
+    id: makeId(),
     savedAt: Date.now(),
     values,
   };
