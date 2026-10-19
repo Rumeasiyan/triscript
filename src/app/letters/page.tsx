@@ -96,7 +96,7 @@ export default function LettersPage() {
               {letters.length > 0 && (
                 <div className="actions">
                   <button type="button" className="btn" onClick={handleExportCsv}>
-                    ↓ {t.letters.exportCsv}
+                    ↓ {t.letters.export}
                   </button>
                   <Link href="/demo" className="btn btn-primary">
                     📷 {t.letters.scanNew}

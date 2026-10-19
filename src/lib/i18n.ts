@@ -162,7 +162,7 @@ const en = {
     cancel: "Cancel",
     deleted: "Letter deleted.",
     saved: "Changes saved.",
-    exportCsv: "Export CSV",
+    export: "Export",
     noSubject: "(no subject)",
   },
 
@@ -370,7 +370,7 @@ const si: Dict = {
     cancel: "අවලංගු කරන්න",
     deleted: "ලිපිය මකා දමන ලදී.",
     saved: "වෙනස්කම් සුරකින ලදී.",
-    exportCsv: "CSV ලෙස අපනයනය කරන්න",
+    export: "අපනයනය කරන්න",
     noSubject: "(විෂය නොමැත)",
   },
 
@@ -576,7 +576,7 @@ const ta: Dict = {
     cancel: "ரத்து செய்",
     deleted: "கடிதம் நீக்கப்பட்டது.",
     saved: "மாற்றங்கள் சேமிக்கப்பட்டன.",
-    exportCsv: "CSV ஆக ஏற்றுமதி செய்",
+    export: "ஏற்றுமதி",
     noSubject: "(பொருள் இல்லை)",
   },
 
