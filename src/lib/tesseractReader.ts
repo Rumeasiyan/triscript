@@ -20,10 +20,28 @@ import { emptyFields, MIN_CONFIDENCE } from "./types";
 
 const execFileAsync = promisify(execFile);
 
+// Common install locations for Tesseract on Windows
+const WINDOWS_PATHS = [
+  "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+  "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe",
+];
+
+function getTesseractBin(): string {
+  // Try PATH first
+  if (process.platform !== "win32") return "tesseract";
+  // On Windows, check known install locations if not in PATH
+  for (const p of WINDOWS_PATHS) {
+    try {
+      if (existsSync(p)) return p;
+    } catch {}
+  }
+  return "tesseract"; // fallback — will fail if not in PATH
+}
+
 /** Check if tesseract binary is available */
 export async function isTesseractAvailable(): Promise<boolean> {
   try {
-    await execFileAsync("tesseract", ["--version"], { timeout: 5000 });
+    await execFileAsync(getTesseractBin(), ["--version"], { timeout: 5000 });
     return true;
   } catch {
     return false;
@@ -40,16 +58,16 @@ export async function readWithTesseract(imageBuffer: Buffer): Promise<ReadFields
 
   try {
     // Run tesseract with English + Sinhala + Tamil
-    // Fall back to English only if sin/tam not installed
+    const bin = getTesseractBin();
     let langs = "eng+sin+tam";
     try {
-      await execFileAsync("tesseract", [imgPath, outBase, "-l", langs, "--psm", "1"], {
+      await execFileAsync(bin, [imgPath, outBase, "-l", langs, "--psm", "1"], {
         timeout: 30000,
       });
     } catch {
-      // Retry with English only
+      // Retry with English only (in case sin/tam lang packs not installed)
       langs = "eng";
-      await execFileAsync("tesseract", [imgPath, outBase, "-l", langs, "--psm", "1"], {
+      await execFileAsync(bin, [imgPath, outBase, "-l", langs, "--psm", "1"], {
         timeout: 30000,
       });
     }
