@@ -3,8 +3,9 @@ import { type FieldKey, FIELD_KEYS, MIN_CONFIDENCE, emptyFields } from "@/lib/ty
 import { readWithTesseract } from "@/lib/tesseractReader";
 
 export const dynamic = "force-dynamic";
-// Allow up to 7 MB for multipart (image + fields)
-export const maxDuration = 30;
+export const runtime = "nodejs";
+// Tesseract OCR can take up to 30s on first load (downloads language data)
+export const maxDuration = 60;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
