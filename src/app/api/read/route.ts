@@ -54,6 +54,7 @@ export async function POST(req: Request) {
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
+
   if (apiKey) {
     try {
       const fields = await readWithOpenAI(imageFile, uiLang, apiKey);
