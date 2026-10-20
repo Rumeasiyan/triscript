@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { type FieldKey, FIELD_KEYS, MIN_CONFIDENCE, emptyFields } from "@/lib/types";
+import { readWithTesseract } from "@/lib/tesseractReader";
 
 export const dynamic = "force-dynamic";
 // Allow up to 7 MB for multipart (image + fields)
@@ -65,7 +66,21 @@ export async function POST(req: Request) {
     }
   }
 
-  // No API key → return demo values
+  // No OpenAI key → try Tesseract OCR (free, runs locally)
+  try {
+    const buffer = Buffer.from(await imageFile.arrayBuffer());
+    const fields = await readWithTesseract(buffer);
+    // Check if Tesseract extracted anything useful
+    const hasContent = Object.values(fields).some((f) => f.value.trim().length > 0);
+    if (hasContent) {
+      return NextResponse.json({ fields }, { headers: NO_STORE });
+    }
+  } catch (err) {
+    console.error("[read] Tesseract error:", err);
+    // Fall through to demo
+  }
+
+  // Nothing worked → return demo values
   await new Promise((r) => setTimeout(r, 600));
   return NextResponse.json({ fields: DEMO_FIELDS }, { headers: NO_STORE });
 }

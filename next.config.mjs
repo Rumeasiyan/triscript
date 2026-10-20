@@ -2,6 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+
+  // tesseract.js uses Node.js fs/path — keep it server-side only
+  experimental: {
+    serverComponentsExternalPackages: ["tesseract.js"],
+  },
+
   async headers() {
     return [
       {
@@ -9,7 +15,6 @@ const nextConfig = {
         headers: [
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "X-Content-Type-Options", value: "nosniff" },
-          // Camera is only needed on the capture page, on this origin.
           { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
         ],
       },
