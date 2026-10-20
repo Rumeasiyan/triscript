@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { type FieldKey, FIELD_KEYS, MIN_CONFIDENCE, emptyFields } from "@/lib/types";
-import { readWithTesseract } from "@/lib/tesseractReader";
+import { readWithTesseract, isTesseractAvailable } from "@/lib/tesseractReader";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -67,14 +67,16 @@ export async function POST(req: Request) {
     }
   }
 
-  // No OpenAI key → try Tesseract OCR (free, runs locally)
+  // No OpenAI key → try Tesseract OCR (requires tesseract binary on the server)
   try {
-    const buffer = Buffer.from(await imageFile.arrayBuffer());
-    const fields = await readWithTesseract(buffer);
-    // Check if Tesseract extracted anything useful
-    const hasContent = Object.values(fields).some((f) => f.value.trim().length > 0);
-    if (hasContent) {
-      return NextResponse.json({ fields }, { headers: NO_STORE });
+    const available = await isTesseractAvailable();
+    if (available) {
+      const buffer = Buffer.from(await imageFile.arrayBuffer());
+      const fields = await readWithTesseract(buffer);
+      const hasContent = Object.values(fields).some((f) => f.value.trim().length > 0);
+      if (hasContent) {
+        return NextResponse.json({ fields }, { headers: NO_STORE });
+      }
     }
   } catch (err) {
     console.error("[read] Tesseract error:", err);
