@@ -4,30 +4,12 @@ import { readWithTesseract, isTesseractAvailable } from "@/lib/tesseractReader";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// Tesseract OCR can take up to 30s on first load (downloads language data)
 export const maxDuration = 60;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-/**
- * POST /api/read
- *
- * Accepts multipart/form-data with:
- *   image   – JPEG / PNG / WebP, max 6 MB
- *   uiLang  – "en" | "si" | "ta"
- *
- * Returns JSON:
- *   { fields: Record<FieldKey, { value: string; confidence: number }> }
- *
- * If OPENAI_API_KEY is set, sends the image to GPT-4o vision and parses the
- * reply.  Otherwise returns the built-in DEMO values so the whole flow works
- * without any external service.
- *
- * If TRISCRIPT_API_KEY is set, requests must include the header:
- *   X-Triscript-Key: <value>
- * This is useful when the reader endpoint is exposed to other apps.
- */
 export async function POST(req: Request) {
+  // Optional API key protection
   const requiredKey = process.env.TRISCRIPT_API_KEY;
   if (requiredKey) {
     const provided = req.headers.get("x-triscript-key");
@@ -50,58 +32,63 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "missing-image" }, { status: 400, headers: NO_STORE });
   }
 
-  const contentType = imageFile.type || "image/jpeg";
-  if (!/^image\/(jpeg|png|webp|heic|heif)$/.test(contentType)) {
+  // Accept any image type — phones sometimes send empty or generic content-type
+  const rawType = imageFile.type ?? "";
+  const isImage = rawType.startsWith("image/") || rawType === "" || rawType === "application/octet-stream";
+  if (!isImage) {
+    console.error("[read] Rejected content-type:", rawType);
     return NextResponse.json({ error: "bad-type" }, { status: 415, headers: NO_STORE });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  console.log("[read] image size:", imageFile.size, "type:", rawType, "lang:", uiLang);
 
+  // ── OpenAI Vision ────────────────────────────────────────────────────────
+  const apiKey = process.env.OPENAI_API_KEY;
   if (apiKey) {
     try {
       const fields = await readWithOpenAI(imageFile, uiLang, apiKey);
       return NextResponse.json({ fields }, { headers: NO_STORE });
     } catch (err) {
       console.error("[read] OpenAI error:", err);
-      return NextResponse.json({ error: "reader-error" }, { status: 502, headers: NO_STORE });
+      // Fall through to Tesseract
     }
   }
 
-  // No OpenAI key → try Tesseract OCR (requires tesseract binary on the server)
+  // ── Tesseract OCR ────────────────────────────────────────────────────────
   try {
     const available = await isTesseractAvailable();
+    console.log("[read] Tesseract available:", available);
     if (available) {
       const buffer = Buffer.from(await imageFile.arrayBuffer());
+      console.log("[read] Running Tesseract on buffer size:", buffer.length);
       const fields = await readWithTesseract(buffer);
       const hasContent = Object.values(fields).some((f) => f.value.trim().length > 0);
+      console.log("[read] Tesseract hasContent:", hasContent);
       if (hasContent) {
-        return NextResponse.json({ fields }, { headers: NO_STORE });
+        return NextResponse.json({ fields, demo: false }, { headers: NO_STORE });
       }
     }
   } catch (err) {
     console.error("[read] Tesseract error:", err);
-    // Fall through to demo
   }
 
-  // Nothing worked → return demo values
+  // ── Demo fallback ────────────────────────────────────────────────────────
+  console.log("[read] Falling back to demo data");
   await new Promise((r) => setTimeout(r, 600));
   return NextResponse.json({ fields: DEMO_FIELDS }, { headers: NO_STORE });
 }
 
-// ─── OpenAI Vision ──────────────────────────────────────────────────────────
+// ─── OpenAI Vision ───────────────────────────────────────────────────────────
 
 async function readWithOpenAI(
   image: Blob,
   uiLang: string,
   apiKey: string,
 ): Promise<ReturnType<typeof normalisedFields>> {
-  // Convert to base64 data URL
   const arrayBuffer = await image.arrayBuffer();
   const base64 = Buffer.from(arrayBuffer).toString("base64");
   const mimeType = image.type || "image/jpeg";
   const dataUrl = `data:${mimeType};base64,${base64}`;
-
-  const prompt = buildPrompt(uiLang);
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -117,7 +104,7 @@ async function readWithOpenAI(
         {
           role: "user",
           content: [
-            { type: "text", text: prompt },
+            { type: "text", text: buildPrompt(uiLang) },
             { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
           ],
         },
@@ -133,7 +120,6 @@ async function readWithOpenAI(
   const json = (await response.json()) as {
     choices: Array<{ message: { content: string } }>;
   };
-
   const text = json.choices[0]?.message?.content ?? "";
   return parseOpenAIResponse(text);
 }
@@ -143,49 +129,29 @@ function buildPrompt(uiLang: string): string {
 The letter may be in Sinhala, Tamil, English, or a mix. \
 Extract the following fields and return ONLY a JSON object — no markdown, no explanation.
 
-Fields to extract:
-- subject: The subject/heading of the letter
-- myNumber: The sender's reference number (often labelled "My No.", "ΦφΟ", etc.)
-- yourNumber: The recipient's reference number (often labelled "Your No.", etc.)
-- date: The date on the letter in YYYY-MM-DD format if possible, otherwise as written
-- from: The sender's name, post and office
-- to: The recipient's name, post and office  
-- signedBy: The name and post of the signatory
-- language: Primary language of the letter — one of: "si", "ta", "en", "mixed"
-- body: The full text body of the letter (for search purposes)
+Fields:
+- subject: heading of the letter
+- myNumber: sender's reference number
+- yourNumber: recipient's reference number
+- date: date in YYYY-MM-DD format
+- from: sender name, post and office
+- to: recipient name and office
+- signedBy: signatory name and post
+- language: "si", "ta", "en", or "mixed"
+- body: full text body
 
-For each field return an object with:
-  "value": the extracted text (empty string if not found or not sure)
-  "confidence": a number between 0 and 1 indicating how confident you are
-
-If you cannot read a field clearly, return confidence < 0.5 and the value as "".
-
-UI language hint (for date parsing preference): ${uiLang}
-
-Return format (JSON only):
-{
-  "subject": { "value": "...", "confidence": 0.0 },
-  "myNumber": { "value": "...", "confidence": 0.0 },
-  "yourNumber": { "value": "...", "confidence": 0.0 },
-  "date": { "value": "...", "confidence": 0.0 },
-  "from": { "value": "...", "confidence": 0.0 },
-  "to": { "value": "...", "confidence": 0.0 },
-  "signedBy": { "value": "...", "confidence": 0.0 },
-  "language": { "value": "...", "confidence": 0.0 },
-  "body": { "value": "...", "confidence": 0.0 }
-}`;
+Each field: { "value": "...", "confidence": 0.0 }
+UI language: ${uiLang}`;
 }
 
 function parseOpenAIResponse(
   text: string,
 ): Record<FieldKey, { value: string; confidence: number }> {
-  // Strip markdown code fences if present
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
   try {
     const raw = JSON.parse(cleaned) as Partial<Record<FieldKey, unknown>>;
     return normalisedFields(raw);
   } catch {
-    // Return empty result — the person will type in the values
     return normalisedFields({});
   }
 }
@@ -199,16 +165,13 @@ function normalisedFields(
     const value = typeof item?.value === "string" ? item.value.trim() : "";
     const c = Number(item?.confidence);
     const confidence = Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : 0;
-    // Clear values below MIN_CONFIDENCE — leave field empty rather than guess
-    out[key] =
-      confidence < MIN_CONFIDENCE ? { value: "", confidence } : { value, confidence };
+    out[key] = confidence < MIN_CONFIDENCE ? { value: "", confidence } : { value, confidence };
   }
   return out;
 }
 
-// ─── Demo fallback ───────────────────────────────────────────────────────────
+// ─── Demo fallback ────────────────────────────────────────────────────────────
 
-// Invented content only. Marked as a test letter, reference numbers start TEST/.
 const DEMO_FIELDS: Record<FieldKey, { value: string; confidence: number }> = {
   subject: { value: "TEST LETTER, NOT VALID: Request for training room", confidence: 0.96 },
   myNumber: { value: "TEST/ITV/2026/014", confidence: 0.93 },
@@ -219,8 +182,7 @@ const DEMO_FIELDS: Record<FieldKey, { value: string; confidence: number }> = {
   signedBy: { value: "A. Test Person, Coordinator", confidence: 0.38 },
   language: { value: "en", confidence: 0.97 },
   body: {
-    value:
-      "TEST LETTER, NOT VALID.\nThis is invented text used to show the scan flow. Please arrange a training room for the volunteers on Friday.",
+    value: "TEST LETTER, NOT VALID.\nThis is invented text used to show the scan flow.",
     confidence: 0.84,
   },
 };

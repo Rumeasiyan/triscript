@@ -57,18 +57,23 @@ export async function readWithTesseract(imageBuffer: Buffer): Promise<ReadFields
   writeFileSync(imgPath, imageBuffer);
 
   try {
-    // Run tesseract with English + Sinhala + Tamil
+    // Run tesseract — ignore stderr (Tesseract always writes progress to stderr)
     const bin = getTesseractBin();
     let langs = "eng+sin+tam";
     try {
       await execFileAsync(bin, [imgPath, outBase, "-l", langs, "--psm", "1"], {
         timeout: 30000,
+      }).catch((e) => {
+        // Tesseract exits non-zero if it writes any stderr — check if output file exists anyway
+        if (!existsSync(txtPath)) throw e;
       });
     } catch {
-      // Retry with English only (in case sin/tam lang packs not installed)
+      // sin/tam lang packs may not be installed — retry English only
       langs = "eng";
       await execFileAsync(bin, [imgPath, outBase, "-l", langs, "--psm", "1"], {
         timeout: 30000,
+      }).catch((e) => {
+        if (!existsSync(txtPath)) throw e;
       });
     }
 
