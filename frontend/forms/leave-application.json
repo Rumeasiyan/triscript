@@ -1,0 +1,14 @@
+{
+  "id": "leave-application",
+  "titleKey": "leaveApplicationTitle",
+  "introKey": "leaveApplicationIntro",
+  "fields": [
+    "subject",
+    "myNumber",
+    "date",
+    "from",
+    "to",
+    "signedBy",
+    "body"
+  ]
+}

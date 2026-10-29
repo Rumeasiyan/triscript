@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRISCRIPT — Document Parser for Sri Lanka Government Offices</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Sinhala:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans Sinhala', 'Noto Sans Tamil', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            govNavy: '#0F172A',
+            govBlue: '#1D4ED8',
+            govBlueHover: '#1E40AF',
+            govBlueLight: '#EFF6FF',
+            govBorder: '#CBD5E1',
+            govBg: '#F8FAFC',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* High contrast focus ring for accessibility compliance */
+    .gov-focus:focus-visible {
+      outline: 3px solid #1D4ED8;
+      outline-offset: 2px;
+    }
+    .a11y-enhanced .gov-focus:focus-visible {
+      outline: 4px solid #000000;
+      outline-offset: 3px;
+    }
+    /* Large readable mode */
+    .a11y-large-text {
+      font-size: 112.5%;
+    }
+    .watermark-banner {
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(220, 38, 38, 0.04),
+        rgba(220, 38, 38, 0.04) 10px,
+        rgba(220, 38, 38, 0.08) 10px,
+        rgba(220, 38, 38, 0.08) 20px
+      );
+    }
+  </style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] font-sans antialiased min-h-screen flex flex-col selection:bg-blue-100 selection:text-blue-900">
+
+  <!-- TOP INSTITUTIONAL BAR -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      
+      <!-- Brand & Sri Lanka Office Context -->
+      <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-3 cursor-pointer" onclick="switchScreen('screen1')">
+          <div class="w-10 h-10 bg-blue-50 border border-blue-200 rounded flex items-center justify-center text-blue-700 shadow-sm font-bold">
+            <svg class="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="font-extrabold text-xl text-slate-900 tracking-tight">TRISCRIPT</span>
+              <span class="text-xs bg-slate-100 border border-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono font-medium">v1.0 Public Sector</span>
+            </div>
+            <p class="text-xs text-slate-500 font-medium">Trilingual Document Parser &bull; ශ්‍රී ලංකා රාජ්‍ය අංශය &bull; இலங்கை அரச சேவை</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls: Screen Switcher (Demo Nav), Language Selector, Accessibility Toggles -->
+      <div class="flex items-center space-x-3">
+        <!-- Screen Step Picker for reviewing all 7 prompt requirements -->
+        <div class="hidden xl:flex items-center bg-slate-100 p-1 rounded-md border border-slate-200">
+          <span class="text-xs text-slate-500 font-medium px-2">Workflow:</span>
+          <button id="nav-btn-screen1" onclick="switchScreen('screen1')" class="px-2.5 py-1 text-xs font-semibold rounded bg-white text-blue-700 shadow-sm gov-focus">1. Scan QR</button>
+          <button id="nav-btn-screen2" onclick="switchScreen('screen2')" class="px-2.5 py-1 text-xs font-semibold rounded text-slate-600 hover:text-slate-900 gov-focus">2. Phone Camera</button>
+          <button id="nav-btn-screen3" onclick="switchScreen('screen3')" class="px-2.5 py-1 text-xs font-semibold rounded text-slate-600 hover:text-slate-900 gov-focus">3. Processing</button>
+          <button id="nav-btn-screen4" onclick="switchScreen('screen4')" class="px-2.5 py-1 text-xs font-semibold rounded text-slate-600 hover:text-slate-900 gov-focus">4. Review Fields</button>
+          <button id="nav-btn-screen5" onclick="switchScreen('screen5')" class="px-2.5 py-1 text-xs font-semibold rounded text-slate-600 hover:text-slate-900 gov-focus">5. Confirmed</button>
+          <button id="nav-btn-screen6" onclick="switchScreen('screen6')" class="px-2.5 py-1 text-xs font-semibold rounded text-slate-600 hover:text-slate-900 gov-focus">6. Translations</button>
+          <button id="nav-btn-screen7" onclick="switchScreen('screen7')" class="px-2.5 py-1 text-xs font-semibold rounded text-slate-600 hover:text-slate-900 gov-focus">7. Accessibility</button>
+        </div>
+
+        <!-- Trilingual Switcher (Screen 6 Requirement) -->
+        <div class="relative inline-block text-left" id="lang-selector-container">
+          <label for="lang-select" class="sr-only">Interface Language</label>
+          <select id="lang-select" onchange="changeLanguage(this.value)" class="bg-white border-2 border-slate-300 text-slate-800 text-sm font-semibold rounded-md px-3 py-1.5 pr-8 focus:border-blue-600 focus:outline-none gov-focus cursor-pointer shadow-sm">
+            <option value="en">English (UK/LK)</option>
+            <option value="si">සිංහල (Sinhala)</option>
+            <option value="ta">தமிழ் (Tamil)</option>
+          </select>
+        </div>
+
+        <!-- Accessibility Toggle (Screen 7 Demonstration) -->
+        <button id="a11y-toggle-btn" onclick="toggleA11yMode()" title="Toggle High Contrast & Large Text Accessibility State" class="px-3 py-1.5 border-2 border-slate-300 rounded-md text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 flex items-center space-x-1.5 gov-focus shadow-sm">
+          <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+          </svg>
+          <span id="a11y-status-text">A11y: Standard</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- TEST DATA MANDATORY BANNER (Strict Rule Requirement) -->
+  <div class="bg-amber-50 border-b border-amber-300 px-4 py-2 text-center text-xs font-semibold text-amber-900 flex items-center justify-center space-x-2">
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-200 text-amber-950 uppercase tracking-wide">Official Notice</span>
+    <span>TEST LETTER, NOT VALID &bull; All reference numbers begin with TEST/ &bull; Open-source document parser for official Sri Lanka administrative records.</span>
+  </div>
+
+  <!-- WORKFLOW STEP PROGRESS HEADER (Desktop Computer) -->
+  <nav aria-label="Workflow progress" class="bg-white border-b border-slate-200 py-3 px-4 sm:px-6">
+    <div class="max-w-5xl mx-auto flex items-center justify-between text-xs sm:text-sm font-medium text-slate-500">
+      <div class="flex items-center space-x-2 step-item" id="step-ind-1">
+        <span class="w-6 h-6 rounded-full bg-blue-700 text-white flex items-center justify-center font-bold text-xs">1</span>
+        <span class="font-bold text-slate-900" data-i18n="step1_title">Scan QR</span>
+      </div>
+      <div class="w-8 h-0.5 bg-slate-300"></div>
+      <div class="flex items-center space-x-2 step-item" id="step-ind-2">
+        <span class="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs">2</span>
+        <span data-i18n="step2_title">Phone Capture</span>
+      </div>
+      <div class="w-8 h-0.5 bg-slate-300"></div>
+      <div class="flex items-center space-x-2 step-item" id="step-ind-3">
+        <span class="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs">3</span>
+        <span data-i18n="step3_title">Reading &amp; Extracting</span>
+      </div>
+      <div class="w-8 h-0.5 bg-slate-300"></div>
+      <div class="flex items-center space-x-2 step-item" id="step-ind-4">
+        <span class="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs">4</span>
+        <span data-i18n="step4_title">Review Fields</span>
+      </div>
+      <div class="w-8 h-0.5 bg-slate-300"></div>
+      <div class="flex items-center space-x-2 step-item" id="step-ind-5">
+        <span class="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs">5</span>
+        <span data-i18n="step5_title">Confirmed &amp; Save</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN APPLICATION CONTENT AREA -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 1: COMPUTER — LETTER SCANNING PAGE -->
+    <!-- ========================================================================= -->
+    <section id="screen1-container" class="screen-view">
+      <div class="max-w-4xl mx-auto bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+        <div class="p-6 sm:p-8">
+          
+          <div class="text-center max-w-2xl mx-auto mb-8">
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mb-2" data-i18n="s1_heading">
+              Scan a Letter
+            </h1>
+            <p class="text-base text-slate-600" data-i18n="s1_subheading">
+              Scan the QR code below using your mobile phone camera to take a photograph of the physical paper letter.
+            </p>
+          </div>
+
+          <!-- QR Session Box & Instructions Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-8 items-center border-t border-b border-slate-200 py-8 my-4">
+            
+            <!-- QR Code Area -->
+            <div class="md:col-span-5 flex flex-col items-center justify-center text-center bg-slate-50 border-2 border-slate-200 rounded-lg p-6">
+              
+              <!-- Realistic High-Contrast QR Code Rendering with Triscript Center Mark -->
+              <div class="relative bg-white p-4 rounded-lg shadow-sm border border-slate-300">
+                <svg class="w-48 h-48" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <!-- QR Finder Top Left -->
+                  <rect x="10" y="10" width="50" height="50" rx="4" fill="#0F172A"/>
+                  <rect x="18" y="18" width="34" height="34" rx="2" fill="#FFFFFF"/>
+                  <rect x="24" y="24" width="22" height="22" rx="1" fill="#0F172A"/>
+
+                  <!-- QR Finder Top Right -->
+                  <rect x="140" y="10" width="50" height="50" rx="4" fill="#0F172A"/>
+                  <rect x="148" y="18" width="34" height="34" rx="2" fill="#FFFFFF"/>
+                  <rect x="154" y="24" width="22" height="22" rx="1" fill="#0F172A"/>
+
+                  <!-- QR Finder Bottom Left -->
+                  <rect x="10" y="140" width="50" height="50" rx="4" fill="#0F172A"/>
+                  <rect x="18" y="148" width="34" height="34" rx="2" fill="#FFFFFF"/>
+                  <rect x="24" y="154" width="22" height="22" rx="1" fill="#0F172A"/>
+
+                  <!-- Data Grid Elements -->
+                  <rect x="70" y="20" width="10" height="10" fill="#0F172A"/>
+                  <rect x="90" y="10" width="10" height="10" fill="#0F172A"/>
+                  <rect x="110" y="20" width="10" height="10" fill="#0F172A"/>
+                  <rect x="70" y="40" width="10" height="10" fill="#0F172A"/>
+                  <rect x="90" y="50" width="10" height="10" fill="#0F172A"/>
+                  <rect x="120" y="40" width="10" height="10" fill="#0F172A"/>
+                  
+                  <rect x="20" y="70" width="10" height="10" fill="#0F172A"/>
+                  <rect x="40" y="80" width="10" height="10" fill="#0F172A"/>
+                  <rect x="10" y="100" width="10" height="10" fill="#0F172A"/>
+                  <rect x="30" y="110" width="10" height="10" fill="#0F172A"/>
+                  <rect x="50" y="120" width="10" height="10" fill="#0F172A"/>
+
+                  <!-- Center Logo Badge -->
+                  <rect x="75" y="75" width="50" height="50" rx="6" fill="#1D4ED8"/>
+                  <rect x="80" y="80" width="40" height="40" rx="4" fill="#FFFFFF"/>
+                  <path d="M88 92h24M88 98h24M88 104h16" stroke="#1D4ED8" stroke-width="2.5" stroke-linecap="round"/>
+
+                  <!-- Remaining pattern -->
+                  <rect x="140" y="70" width="10" height="10" fill="#0F172A"/>
+                  <rect x="160" y="80" width="10" height="10" fill="#0F172A"/>
+                  <rect x="180" y="100" width="10" height="10" fill="#0F172A"/>
+                  <rect x="150" y="110" width="10" height="10" fill="#0F172A"/>
+                  <rect x="170" y="120" width="10" height="10" fill="#0F172A"/>
+
+                  <rect x="70" y="140" width="10" height="10" fill="#0F172A"/>
+                  <rect x="90" y="150" width="10" height="10" fill="#0F172A"/>
+                  <rect x="110" y="140" width="10" height="10" fill="#0F172A"/>
+                  <rect x="80" y="170" width="10" height="10" fill="#0F172A"/>
+                  <rect x="100" y="180" width="10" height="10" fill="#0F172A"/>
+                  <rect x="140" y="150" width="10" height="10" fill="#0F172A"/>
+                  <rect x="160" y="160" width="10" height="10" fill="#0F172A"/>
+                  <rect x="180" y="180" width="10" height="10" fill="#0F172A"/>
+                </svg>
+
+                <div class="mt-2 text-center">
+                  <span class="inline-block text-[11px] font-mono text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded">
+                    SESSION ID: #TRISCRIPT-7489
+                  </span>
+                </div>
+              </div>
+
+              <!-- Expiry Countdown -->
+              <div class="mt-4 flex items-center space-x-2 text-xs text-slate-600 bg-white px-3 py-1.5 rounded-full border border-slate-200">
+                <svg class="w-4 h-4 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span>Session expires in: <strong id="session-timer" class="font-mono text-slate-900">04:42</strong></span>
+              </div>
+            </div>
+
+            <!-- Steps & Browser Instructions -->
+            <div class="md:col-span-7 space-y-5">
+              
+              <!-- Session Status Badge -->
+              <div class="bg-blue-50 border-l-4 border-blue-600 p-4 rounded-r">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-600"></span>
+                    </span>
+                    <span class="text-sm font-bold text-blue-900" data-i18n="s1_status_waiting">
+                      Session Status: Waiting for phone connection
+                    </span>
+                  </div>
+                  <span class="text-xs text-blue-700 font-medium">Ready to pair</span>
+                </div>
+                <p class="text-xs text-blue-800 mt-1" data-i18n="s1_status_desc">
+                  This computer will automatically update the moment your phone captures the letter.
+                </p>
+              </div>
+
+              <!-- Scanning instructions -->
+              <div class="space-y-3">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700" data-i18n="s1_instruct_title">
+                  Instructions for Phone Camera:
+                </h2>
+                
+                <ol class="space-y-2.5 text-sm text-slate-700">
+                  <li class="flex items-start space-x-3">
+                    <span class="w-6 h-6 rounded bg-slate-100 text-slate-800 font-bold flex items-center justify-center shrink-0 border border-slate-300 text-xs">1</span>
+                    <span data-i18n="s1_step_1">Open the default camera app on any smartphone (Android or iPhone).</span>
+                  </li>
+                  <li class="flex items-start space-x-3">
+                    <span class="w-6 h-6 rounded bg-slate-100 text-slate-800 font-bold flex items-center justify-center shrink-0 border border-slate-300 text-xs">2</span>
+                    <span data-i18n="s1_step_2">Point your camera at the QR code and tap the web link that appears on screen.</span>
+                  </li>
+                  <li class="flex items-start space-x-3">
+                    <span class="w-6 h-6 rounded bg-slate-100 text-slate-800 font-bold flex items-center justify-center shrink-0 border border-slate-300 text-xs">3</span>
+                    <span data-i18n="s1_step_3">Photograph the document in good lighting. No app installation required.</span>
+                  </li>
+                </ol>
+              </div>
+
+              <!-- Zero Installation Callout -->
+              <div class="flex items-center space-x-3 p-3 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-900 text-xs font-semibold">
+                <svg class="w-5 h-5 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span data-i18n="s1_no_app">
+                  No mobile app installation is required. Works securely in Chrome, Safari, Firefox, or any standard mobile browser.
+                </span>
+              </div>
+
+              <!-- Demo Quick Action Button: Simulate Phone Scan Trigger -->
+              <div class="pt-2 flex items-center space-x-4">
+                <button onclick="switchScreen('screen2')" class="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm rounded shadow-sm gov-focus transition flex items-center space-x-2">
+                  <span>Simulate Phone Connection (Open Phone View)</span>
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                </button>
+                <button onclick="switchScreen('screen3')" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm rounded border border-slate-300 gov-focus transition">
+                  Skip to Processing
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Bottom Security & Privacy Footnote -->
+          <div class="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 pt-2">
+            <span>Direct peer-to-peer office session &bull; End-to-end encrypted local transmission</span>
+            <span class="mt-2 sm:mt-0 font-mono">Server ID: LK-GOV-WP-01</span>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 2: PHONE — QR PAIRING AND CAMERA PAGE -->
+    <!-- ========================================================================= -->
+    <section id="screen2-container" class="screen-view hidden">
+      <div class="max-w-md mx-auto">
+        
+        <div class="mb-4 text-center">
+          <span class="text-xs uppercase font-bold tracking-wider text-slate-500 bg-slate-200 px-3 py-1 rounded-full">
+            Mobile Browser View (Phone Device Frame)
+          </span>
+        </div>
+
+        <!-- Smartphone Frame Wrapper -->
+        <div class="bg-slate-900 p-3 rounded-[36px] shadow-2xl border-4 border-slate-800">
+          <!-- Screen Glass -->
+          <div class="bg-white rounded-[28px] overflow-hidden flex flex-col min-h-[640px] text-slate-900">
+            
+            <!-- Mobile Top Chrome / TRISCRIPT Branding -->
+            <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <div class="w-6 h-6 bg-blue-600 rounded flex items-center justify-center font-bold text-xs text-white">T</div>
+                <span class="font-bold text-sm tracking-wide">TRISCRIPT Mobile</span>
+              </div>
+              <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">PAIR #7489</span>
+            </div>
+
+            <!-- Connection Confirmation Banner -->
+            <div class="bg-emerald-50 border-b border-emerald-200 px-4 py-2 flex items-center space-x-2">
+              <div class="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></div>
+              <p class="text-xs font-bold text-emerald-900" data-i18n="phone_connected">
+                Connected to Computer: Workstation LK-WP-01
+              </p>
+            </div>
+
+            <!-- Main Phone Camera Interactive Area -->
+            <div class="p-4 flex-1 flex flex-col justify-between space-y-4">
+              
+              <!-- Instruction Header -->
+              <div>
+                <h2 class="text-lg font-extrabold text-slate-900 leading-tight" data-i18n="phone_instruction_title">
+                  Take a photo of your letter
+                </h2>
+                <p class="text-xs text-slate-600 mt-1" data-i18n="phone_instruction_desc">
+                  Position the physical paper document flat. Ensure all borders and reference numbers are visible.
+                </p>
+              </div>
+
+              <!-- Viewfinder / Camera Preview Area -->
+              <div id="phone-viewfinder" class="relative bg-slate-950 rounded-xl overflow-hidden aspect-[3/4] border-2 border-slate-300 flex flex-col items-center justify-center text-white shadow-inner">
+                
+                <!-- State A: Live Viewfinder / Alignment Guide -->
+                <div id="camera-live-overlay" class="absolute inset-0 p-4 flex flex-col justify-between pointer-events-none">
+                  <!-- Alignment Corner Brackets -->
+                  <div class="flex justify-between">
+                    <div class="w-8 h-8 border-t-4 border-l-4 border-white/80 rounded-tl"></div>
+                    <div class="w-8 h-8 border-t-4 border-r-4 border-white/80 rounded-tr"></div>
+                  </div>
+                  <div class="text-center bg-black/60 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full self-center border border-white/20">
+                    Align document inside corners
+                  </div>
+                  <div class="flex justify-between">
+                    <div class="w-8 h-8 border-b-4 border-l-4 border-white/80 rounded-bl"></div>
+                    <div class="w-8 h-8 border-b-4 border-r-4 border-white/80 rounded-br"></div>
+                  </div>
+                </div>
+
+                <!-- Simulated Live Document View Inside Lens -->
+                <div id="camera-paper-mock" class="w-4/5 h-4/5 bg-slate-100 text-slate-800 p-4 rounded shadow-md border border-slate-300 text-[9px] flex flex-col justify-between select-none">
+                  <div>
+                    <div class="text-center font-extrabold text-red-600 border-b border-red-300 pb-1 mb-2">
+                      TEST LETTER, NOT VALID
+                    </div>
+                    <div class="font-bold">දිස්ත්‍රික් ලේකම් කාර්යාලය &bull; District Secretariat</div>
+                    <div class="text-slate-600 font-mono mt-1">Ref: TEST/COL/ADM/2025/084</div>
+                    <div class="mt-2 space-y-1 text-slate-700">
+                      <div class="h-1.5 bg-slate-300 rounded w-3/4"></div>
+                      <div class="h-1.5 bg-slate-300 rounded w-full"></div>
+                      <div class="h-1.5 bg-slate-300 rounded w-5/6"></div>
+                    </div>
+                  </div>
+                  <div class="text-right font-semibold text-[8px] text-slate-600">
+                    Colombo 07 &bull; දිනය: 2025-02-14
+                  </div>
+                </div>
+
+                <!-- Captured Preview Tag (Shown when captured) -->
+                <div id="captured-badge" class="hidden absolute top-3 right-3 bg-emerald-600 text-white text-[11px] font-bold px-2 py-0.5 rounded shadow">
+                  Photo Captured
+                </div>
+              </div>
+
+              <!-- Sending Status Toast (Hidden by default) -->
+              <div id="phone-sending-status" class="hidden bg-blue-50 border border-blue-200 p-3 rounded-lg flex items-center space-x-3 text-xs text-blue-900">
+                <svg class="w-5 h-5 text-blue-700 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <div>
+                  <p class="font-bold" data-i18n="phone_sending_title">Sending photograph to computer...</p>
+                  <p class="text-[11px] text-blue-700" data-i18n="phone_sending_desc">Transferring high-resolution scan via encrypted local socket.</p>
+                </div>
+              </div>
+
+              <!-- Session Expired Alert (Toggleable for requirement demonstration) -->
+              <div id="phone-expired-alert" class="hidden bg-red-50 border-l-4 border-red-600 p-3 rounded-r text-xs text-red-900">
+                <p class="font-bold" data-i18n="phone_expired_title">Session has expired</p>
+                <p class="mt-0.5" data-i18n="phone_expired_desc">Please return to the computer and scan a fresh QR code.</p>
+              </div>
+
+              <!-- Action Controls on Phone Screen -->
+              <div class="space-y-2 pt-1">
+                <!-- Initial State: Take Photo Button -->
+                <div id="phone-btn-group-initial" class="space-y-2">
+                  <button onclick="handlePhoneTakePhoto()" class="w-full py-3.5 bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-base rounded-xl shadow-md gov-focus flex items-center justify-center space-x-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span data-i18n="phone_btn_take">Take Photo</span>
+                  </button>
+                  <button onclick="togglePhoneSessionExpired()" class="w-full py-1 text-xs text-slate-500 underline text-center">
+                    [Demo: Toggle Session Expired State]
+                  </button>
+                </div>
+
+                <!-- Post Capture State: Retake and Use Photo Buttons -->
+                <div id="phone-btn-group-preview" class="hidden grid grid-cols-2 gap-2">
+                  <button onclick="handlePhoneRetake()" class="py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm rounded-xl border border-slate-300 gov-focus" data-i18n="phone_btn_retake">
+                    Retake Photo
+                  </button>
+                  <button onclick="handlePhoneUsePhoto()" class="py-3 bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm rounded-xl shadow-sm gov-focus" data-i18n="phone_btn_use">
+                    Use Photo &rarr;
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Mobile Footer Browser Note -->
+            <div class="bg-slate-100 px-4 py-2 border-t border-slate-200 text-center text-[10px] text-slate-500 font-medium">
+              Running inside Mobile Web Browser &bull; No app installation &bull; WebRTC Direct Link
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 3: COMPUTER — LETTER PROCESSING PAGE -->
+    <!-- ========================================================================= -->
+    <section id="screen3-container" class="screen-view hidden">
+      <div class="max-w-4xl mx-auto bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+        <div class="p-6 sm:p-8">
+          
+          <div class="flex items-center justify-between pb-6 border-b border-slate-200">
+            <div>
+              <h1 class="text-2xl font-extrabold text-slate-900" data-i18n="s3_heading">Letter Processing</h1>
+              <p class="text-sm text-slate-600 mt-1" data-i18n="s3_subheading">
+                Photograph received from phone. TRISCRIPT neural OCR is parsing trilingual document content.
+              </p>
+            </div>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+              Processing Active
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-8 my-8 items-start">
+            
+            <!-- Left: Received Letter Image Preview -->
+            <div class="md:col-span-5 space-y-3">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-600" data-i18n="s3_photo_received_label">
+                Captured Letter Preview:
+              </label>
+              
+              <div class="relative bg-slate-50 border-2 border-slate-300 rounded-lg p-4 shadow-inner">
+                <!-- Document Image Mockup -->
+                <div class="bg-white border border-slate-300 rounded shadow p-5 font-mono text-[11px] leading-relaxed text-slate-800 watermark-banner relative">
+                  <div class="text-center font-bold text-red-700 border-b-2 border-red-300 pb-1 mb-3">
+                    TEST LETTER, NOT VALID
+                  </div>
+                  <div class="text-center font-sans font-bold text-slate-900 text-xs">
+                    කොළඹ දිස්ත්‍රික් ලේකම් කාර්යාලය<br>
+                    District Secretariat, Colombo<br>
+                    மாவட்ட செயலகம், கொழும்பு
+                  </div>
+                  <div class="mt-3 flex justify-between text-[10px] text-slate-600">
+                    <span>මගේ අංකය / My Ref: <strong>TEST/COL/ADM/2025/084</strong></span>
+                  </div>
+                  <div class="mt-1 text-[10px] text-slate-600">
+                    <span>දිනය / Date: <strong>2025-02-14</strong></span>
+                  </div>
+                  <div class="mt-3 text-[10px] text-slate-700">
+                    <strong>විෂය / Subject:</strong> රාජ්‍ය පරිපාලන චක්‍රලේඛ අංක 14/2024 ක්‍රියාත්මක කිරීම පිළිබඳව.
+                  </div>
+                  <div class="mt-4 border-t border-slate-200 pt-2 text-[9px] text-slate-500">
+                    [Paper physical scan &bull; 300 DPI equivalent]
+                  </div>
+                </div>
+
+                <div class="mt-3 flex items-center justify-between text-xs text-slate-600">
+                  <span>Resolution: 3024 &times; 4032 px</span>
+                  <span class="text-emerald-700 font-bold">&check; Photo Received</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Stepped Progress and Status Messages -->
+            <div class="md:col-span-7 space-y-6">
+              
+              <!-- Real-time Status Sequence -->
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-6 space-y-5">
+                <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider" data-i18n="s3_progress_steps_title">
+                  Extraction Pipeline:
+                </h2>
+
+                <div class="space-y-4">
+                  <!-- Step 1: Photo received -->
+                  <div class="flex items-center space-x-3 text-sm">
+                    <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">&check;</span>
+                    <span class="font-semibold text-slate-900" data-i18n="s3_status_received">Photo received</span>
+                    <span class="text-xs text-slate-400 font-mono">0.4s</span>
+                  </div>
+
+                  <!-- Step 2: Reading letter -->
+                  <div class="flex items-center space-x-3 text-sm">
+                    <span class="w-6 h-6 rounded-full bg-blue-700 text-white flex items-center justify-center font-bold text-xs shrink-0 animate-pulse">2</span>
+                    <div class="flex-1">
+                      <span class="font-bold text-blue-900" data-i18n="s3_status_reading">Reading letter (Sinhala &bull; Tamil &bull; English scripts)</span>
+                    </div>
+                    <span class="text-xs text-blue-600 font-mono font-semibold">Running</span>
+                  </div>
+
+                  <!-- Step 3: Extracting letter details -->
+                  <div class="flex items-center space-x-3 text-sm">
+                    <span class="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs shrink-0">3</span>
+                    <span class="text-slate-500 font-medium" data-i18n="s3_status_extracting">Extracting letter details &amp; reference indices</span>
+                    <span class="text-xs text-slate-400 font-mono">Pending</span>
+                  </div>
+                </div>
+
+                <!-- Animated Progress Bar -->
+                <div class="pt-2">
+                  <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                    <span data-i18n="s3_overall_progress">Overall Progress</span>
+                    <span>68%</span>
+                  </div>
+                  <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                    <div class="bg-blue-600 h-3 rounded-full transition-all duration-500" style="width: 68%"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Error State Panel (Prompt requirement: clear error state if photograph is dark, blurred, cut off) -->
+              <div id="processing-error-state" class="bg-rose-50 border-l-4 border-rose-600 p-4 rounded-r space-y-2">
+                <div class="flex items-start justify-between">
+                  <div class="flex items-center space-x-2 text-rose-900 font-bold text-sm">
+                    <svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    <span data-i18n="s3_error_title">Quality Assessment: Low Clarity Warning</span>
+                  </div>
+                  <span class="text-xs bg-rose-200 text-rose-900 px-2 py-0.5 rounded font-semibold">Validation Notice</span>
+                </div>
+                <p class="text-xs text-rose-800 leading-relaxed" data-i18n="s3_error_desc">
+                  Notice: Ensure the paper is not blurred or unevenly shadowed. If extraction confidence is low, you can retake the photo immediately without losing your computer session.
+                </p>
+                <div class="pt-2 flex items-center space-x-3">
+                  <button onclick="switchScreen('screen1')" class="px-3.5 py-1.5 bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs rounded gov-focus transition" data-i18n="s3_btn_retake">
+                    &larr; Return to Capture Step &amp; Retake
+                  </button>
+                  <button onclick="switchScreen('screen4')" class="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded gov-focus transition" data-i18n="s3_btn_proceed">
+                    Proceed to Review Screen &rarr;
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 4: COMPUTER — EXTRACTED LETTER REVIEW PAGE (MAIN RESULT SCREEN) -->
+    <!-- ========================================================================= -->
+    <section id="screen4-container" class="screen-view hidden">
+      <div class="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+        
+        <!-- Header with Warning: Never save automatically -->
+        <div class="p-6 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center space-x-3">
+              <h1 class="text-2xl font-extrabold text-slate-900" data-i18n="s4_heading">Extracted Letter Review</h1>
+              <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-0.5 rounded border border-blue-200">
+                Awaiting Verification
+              </span>
+            </div>
+            <p class="text-sm text-slate-600 mt-1" data-i18n="s4_subheading">
+              Verify all extracted values against the photographed paper letter on the left. All fields are editable.
+            </p>
+          </div>
+
+          <div class="flex items-center space-x-3">
+            <button onclick="switchScreen('screen1')" class="px-4 py-2 border-2 border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-sm rounded gov-focus flex items-center space-x-1.5 transition" data-i18n="s4_btn_retake">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span>Retake Photo</span>
+            </button>
+            
+            <button onclick="confirmLetterDetails()" class="px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-sm rounded shadow gov-focus flex items-center space-x-2 transition" data-i18n="s4_btn_confirm">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span>Confirm Details</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mandatory User Notice -->
+        <div class="bg-blue-50 border-b border-blue-200 px-6 py-2.5 text-xs text-blue-900 font-medium flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <svg class="w-4 h-4 text-blue-700 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span data-i18n="s4_no_auto_save">
+              <strong>Verification Requirement:</strong> Details are never saved automatically. The government officer must review and click "Confirm Details" before submission.
+            </span>
+          </div>
+          <span class="text-slate-500 font-semibold text-[11px]">8 Fields Extracted &bull; 1 Uncertain Value Left Empty</span>
+        </div>
+
+        <!-- Two-Column Side-by-Side Split View (Desktop) / Stacked (Mobile) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+          
+          <!-- LEFT SIDE: PHOTOGRAPHED LETTER IMAGE WITH ZOOM/INSPECT -->
+          <div class="lg:col-span-5 p-6 bg-slate-50 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="s4_doc_preview_title">
+                  Original Photographed Letter:
+                </span>
+                <span class="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono font-medium">100% Native Scale</span>
+              </div>
+
+              <!-- Visual Document Sheet Representation -->
+              <div class="bg-white border-2 border-slate-300 rounded-lg shadow p-6 relative font-sans text-xs text-slate-800 watermark-banner">
+                
+                <!-- Mandatory Prompt Label -->
+                <div class="text-center font-extrabold text-red-600 text-sm border-b-2 border-red-300 pb-1 mb-4 tracking-wide">
+                  TEST LETTER, NOT VALID
+                </div>
+
+                <!-- Letterhead -->
+                <div class="text-center space-y-0.5 border-b border-slate-200 pb-3 mb-4">
+                  <h3 class="font-extrabold text-slate-900 text-sm">කොළඹ දිස්ත්‍රික් ලේකම් කාර්යාලය</h3>
+                  <h4 class="font-bold text-slate-800 text-xs">District Secretariat — Colombo</h4>
+                  <p class="text-[11px] text-slate-600">மாவட்ட செயலகம் — கொழும்பு</p>
+                  <p class="text-[10px] text-slate-500">දමයන්ති මාවත, කොළඹ 07 &bull; Damayanthi Mawatha, Colombo 07</p>
+                </div>
+
+                <!-- References & Date -->
+                <div class="space-y-1.5 font-mono text-[11px] mb-4 bg-slate-50 p-2.5 rounded border border-slate-200">
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">මගේ අංකය / My No:</span>
+                    <strong class="text-blue-900 bg-blue-50 px-1 rounded">TEST/COL/ADM/2025/084</strong>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">ඔබේ අංකය / Your No:</span>
+                    <span class="text-slate-400 italic">[Unspecified in original]</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">දිනය / Date:</span>
+                    <strong class="text-slate-900">2025-02-14</strong>
+                  </div>
+                </div>
+
+                <!-- Addressee & Sender -->
+                <div class="space-y-2 mb-4 text-[11px]">
+                  <div>
+                    <span class="text-slate-500 text-[10px] uppercase font-bold block">To:</span>
+                    <p class="font-semibold text-slate-900">සියලුම ප්‍රාදේශීය ලේකම්වරුන් / All Divisional Secretaries,</p>
+                    <p class="text-slate-700">කොළඹ දිස්ත්‍රික්කය / Colombo District.</p>
+                  </div>
+                  <div>
+                    <span class="text-slate-500 text-[10px] uppercase font-bold block">Subject:</span>
+                    <p class="font-bold text-blue-950 bg-blue-50/50 p-1.5 rounded border border-blue-100">
+                      රාජ්‍ය පරිපාලන චක්‍රලේඛ අංක 14/2024 ක්‍රියාත්මක කිරීම පිළිබඳව (Implementation of Public Administration Circular 14/2024).
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Body Text -->
+                <div class="text-[11px] leading-relaxed text-slate-700 space-y-2 border-t border-slate-200 pt-3">
+                  <p>
+                    ඉහත සඳහන් චක්‍රලේඛය මගින් නිකුත් කර ඇති නව රාජ්‍ය භාෂා ප්‍රතිපත්ති මාර්ගෝපදේශ අනුව ඔබේ බලප්‍රදේශයේ සියලුම රාජ්‍ය ලිපිගොනු සිංහල, දෙමළ සහ ඉංග්‍රීසි භාෂා ත්‍රිත්වයෙන්ම ලේඛනගත කළ යුතුය.
+                  </p>
+                  <p>
+                    மேற்கூறிய சுற்றறிக்கையின்படி அனைத்து அரச ஆவணங்களும் மும்மொழிகளிலும் பேணப்படுதல் கட்டாயமாகும்.
+                  </p>
+                </div>
+
+                <!-- Signatory -->
+                <div class="mt-5 border-t border-slate-200 pt-3 flex justify-between items-end">
+                  <div>
+                    <p class="font-bold text-slate-900">කේ. එම්. පෙරේරා මහතා</p>
+                    <p class="text-[10px] text-slate-600">දිස්ත්‍රික් ලේකම් / District Secretary</p>
+                    <p class="text-[10px] text-slate-500">කොළඹ දිස්ත්‍රික් ලේකම් කාර්යාලය</p>
+                  </div>
+                  <div class="border border-dashed border-slate-300 px-2 py-1 rounded text-[10px] text-slate-400 font-mono">
+                    [Signed / අත්සන් කරන ලදී]
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+              <span>Source: Direct Mobile Snapshot</span>
+              <span class="font-mono">Encrypted Hash: 9f8a...c31b</span>
+            </div>
+          </div>
+
+
+          <!-- RIGHT SIDE: EXTRACTED FORM FIELDS WITH CONFIDENCE RATINGS -->
+          <div class="lg:col-span-7 p-6 sm:p-8 space-y-6">
+            
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h2 class="text-base font-bold text-slate-900" data-i18n="s4_fields_title">
+                Extracted Metadata &amp; Content Fields
+              </h2>
+              
+              <!-- Confidence Legend -->
+              <div class="flex items-center space-x-3 text-xs">
+                <span class="flex items-center space-x-1">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  <span class="text-slate-600 font-medium">High</span>
+                </span>
+                <span class="flex items-center space-x-1">
+                  <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                  <span class="text-slate-600 font-medium">Medium</span>
+                </span>
+                <span class="flex items-center space-x-1">
+                  <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                  <span class="text-slate-600 font-medium">Low/Empty</span>
+                </span>
+              </div>
+            </div>
+
+            <form id="extracted-fields-form" onsubmit="event.preventDefault(); confirmLetterDetails();" class="space-y-4">
+              
+              <!-- Field 1: Subject -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                  <label for="field-subject" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_subject">
+                    Subject <span class="text-red-500">*</span>
+                  </label>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                    &check; 98% High Confidence
+                  </span>
+                </div>
+                <input type="text" id="field-subject" value="රාජ්‍ය පරිපාලන චක්‍රලේඛ අංක 14/2024 ක්‍රියාත්මක කිරීම පිළිබඳව" class="w-full px-3.5 py-2.5 bg-white border-2 border-slate-300 rounded text-sm text-slate-900 font-medium focus:border-blue-600 focus:bg-blue-50/20 gov-focus shadow-sm">
+              </div>
+
+              <!-- Field 2 & 3: Reference Numbers (My Number, Your Number) -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- My Number -->
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between">
+                    <label for="field-my-number" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_my_number">
+                      My Number <span class="text-red-500">*</span>
+                    </label>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                      99% High
+                    </span>
+                  </div>
+                  <input type="text" id="field-my-number" value="TEST/COL/ADM/2025/084" class="w-full px-3.5 py-2 bg-white border-2 border-slate-300 rounded text-sm font-mono text-slate-900 font-bold focus:border-blue-600 gov-focus">
+                  <p class="text-[11px] text-slate-500">Must start with TEST/ for test letters</p>
+                </div>
+
+                <!-- Your Number (Uncertain field left empty as requested in prompt) -->
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between">
+                    <label for="field-your-number" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_your_number">
+                      Your Number
+                    </label>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800">
+                      Low Confidence (Empty)
+                    </span>
+                  </div>
+                  <input type="text" id="field-your-number" value="" placeholder="Leave empty or enter if present on document" class="w-full px-3.5 py-2 bg-amber-50/40 border-2 border-amber-300 rounded text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:border-blue-600 gov-focus">
+                  <p class="text-[11px] text-amber-800 font-medium">Uncertain field left empty rather than inventing data</p>
+                </div>
+              </div>
+
+              <!-- Field 4 & 8: Date and Language -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Date -->
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between">
+                    <label for="field-date" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_date">
+                      Date <span class="text-red-500">*</span>
+                    </label>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                      96% High
+                    </span>
+                  </div>
+                  <input type="date" id="field-date" value="2025-02-14" class="w-full px-3.5 py-2 bg-white border-2 border-slate-300 rounded text-sm text-slate-900 font-medium focus:border-blue-600 gov-focus">
+                </div>
+
+                <!-- Language -->
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between">
+                    <label for="field-language" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_language">
+                      Detected Language
+                    </label>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                      Tri-Script
+                    </span>
+                  </div>
+                  <select id="field-language" class="w-full px-3.5 py-2 bg-white border-2 border-slate-300 rounded text-sm text-slate-900 font-medium focus:border-blue-600 gov-focus">
+                    <option value="mixed" selected>Mixed (සිංහල &bull; தமிழ் &bull; English)</option>
+                    <option value="si">සිංහල (Sinhala Primary)</option>
+                    <option value="ta">தமிழ் (Tamil Primary)</option>
+                    <option value="en">English Primary</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Field 5: From — sender's name, post, and office -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                  <label for="field-from" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_from">
+                    From (Sender Name, Post, Office) <span class="text-red-500">*</span>
+                  </label>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                    94% High
+                  </span>
+                </div>
+                <input type="text" id="field-from" value="කේ. එම්. පෙරේරා මහතා, දිස්ත්‍රික් ලේකම්, කොළඹ දිස්ත්‍රික් ලේකම් කාර්යාලය" class="w-full px-3.5 py-2.5 bg-white border-2 border-slate-300 rounded text-sm text-slate-900 font-medium focus:border-blue-600 gov-focus">
+              </div>
+
+              <!-- Field 6: To — addressee -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                  <label for="field-to" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_to">
+                    To (Addressee) <span class="text-red-500">*</span>
+                  </label>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                    92% High
+                  </span>
+                </div>
+                <input type="text" id="field-to" value="සියලුම ප්‍රාදේශීය ලේකම්වරුන්, කොළඹ දිස්ත්‍රික්කය" class="w-full px-3.5 py-2.5 bg-white border-2 border-slate-300 rounded text-sm text-slate-900 font-medium focus:border-blue-600 gov-focus">
+              </div>
+
+              <!-- Field 7: Signed By — signatory's name and post -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                  <label for="field-signed-by" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_signed_by">
+                    Signed By (Signatory Name &amp; Post) <span class="text-red-500">*</span>
+                  </label>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900">
+                    84% Medium (Verified)
+                  </span>
+                </div>
+                <input type="text" id="field-signed-by" value="කේ. එම්. පෙරේරා — දිස්ත්‍රික් ලේකම්" class="w-full px-3.5 py-2.5 bg-white border-2 border-slate-300 rounded text-sm text-slate-900 font-medium focus:border-blue-600 gov-focus">
+              </div>
+
+              <!-- Field 9: Body — full extracted letter text for searching -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                  <label for="field-body" class="block text-xs font-bold uppercase tracking-wider text-slate-700" data-i18n="f_body">
+                    Body (Full Extracted Letter Text for Searching) <span class="text-red-500">*</span>
+                  </label>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                    97% Search Index Ready
+                  </span>
+                </div>
+                <textarea id="field-body" rows="4" class="w-full px-3.5 py-2.5 bg-white border-2 border-slate-300 rounded text-sm text-slate-900 leading-relaxed font-sans focus:border-blue-600 gov-focus">ඉහත සඳහන් චක්‍රලේඛය මගින් නිකුත් කර ඇති නව රාජ්‍ය භාෂා ප්‍රතිපත්ති මාර්ගෝපදේශ අනුව ඔබේ බලප්‍රදේශයේ සියලුම රාජ්‍ය ලිපිගොනු සිංහල, දෙමළ සහ ඉංග්‍රීසි භාෂා ත්‍රිත්වයෙන්ම ලේඛනගත කළ යුතුය. 
+
+மேற்கூறிய சுற்றறிக்கையின்படி அனைத்து அரச ஆவணங்களும் மும்மொழிகளிலும் பேணப்படுதல் கட்டாயமாகும். 
+
+All regional divisional secretariats must comply with trilingual correspondence indexing by end of Q1 2025.</textarea>
+              </div>
+
+              <!-- Bottom Confirm & Correction Actions -->
+              <div class="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="text-xs text-slate-500">
+                  Click any field directly to make administrative corrections before confirming.
+                </div>
+                
+                <div class="flex items-center space-x-3 w-full sm:w-auto">
+                  <button type="button" onclick="switchScreen('screen1')" class="w-1/2 sm:w-auto px-4 py-2 border-2 border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-sm rounded gov-focus">
+                    Retake Photo
+                  </button>
+                  <button type="submit" class="w-1/2 sm:w-auto px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-sm rounded shadow gov-focus flex items-center justify-center space-x-2">
+                    <span data-i18n="s4_btn_confirm_submit">Confirm Details</span>
+                    <span>&rarr;</span>
+                  </button>
+                </div>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 5: COMPUTER — CONFIRMED LETTER DETAILS (SAVE TO HOST SYSTEM) -->
+    <!-- ========================================================================= -->
+    <section id="screen5-container" class="screen-view hidden">
+      <div class="max-w-4xl mx-auto bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+        <div class="p-6 sm:p-8 space-y-6">
+          
+          <!-- Clear Confirmation Message Banner -->
+          <div class="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-5 flex items-start space-x-4">
+            <div class="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shrink-0 mt-0.5">
+              &check;
+            </div>
+            <div>
+              <h1 class="text-xl font-extrabold text-emerald-950" data-i18n="s5_confirmed_title">
+                Letter Details Successfully Reviewed &amp; Verified
+              </h1>
+              <p class="text-sm text-emerald-800 mt-1" data-i18n="s5_confirmed_desc">
+                All 8 required fields have been inspected and confirmed by the officer. The structured record is ready to be committed to the official government document repository.
+              </p>
+            </div>
+          </div>
+
+          <!-- Confirmed Summary Table / Field Display -->
+          <div class="border border-slate-200 rounded-lg overflow-hidden">
+            <div class="bg-slate-100 px-5 py-3 border-b border-slate-200 flex justify-between items-center">
+              <h2 class="font-bold text-sm text-slate-800" data-i18n="s5_table_heading">
+                Official Administrative Record Metadata
+              </h2>
+              <span class="text-xs font-mono font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                STATUS: READY TO COMMIT
+              </span>
+            </div>
+
+            <dl class="divide-y divide-slate-200 text-sm">
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-white">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_subject">Subject</dt>
+                <dd id="conf-subject" class="sm:col-span-2 font-semibold text-slate-900">
+                  රාජ්‍ය පරිපාලන චක්‍රලේඛ අංක 14/2024 ක්‍රියාත්මක කිරීම පිළිබඳව
+                </dd>
+              </div>
+
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-slate-50">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_my_number">My Number</dt>
+                <dd id="conf-my-no" class="sm:col-span-2 font-mono font-bold text-blue-900">
+                  TEST/COL/ADM/2025/084
+                </dd>
+              </div>
+
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-white">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_your_number">Your Number</dt>
+                <dd id="conf-your-no" class="sm:col-span-2 font-mono text-slate-500 italic">
+                  Not Provided / Nil
+                </dd>
+              </div>
+
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-slate-50">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_date">Date</dt>
+                <dd id="conf-date" class="sm:col-span-2 font-medium text-slate-900">
+                  2025-02-14
+                </dd>
+              </div>
+
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-white">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_from">From</dt>
+                <dd id="conf-from" class="sm:col-span-2 font-medium text-slate-900">
+                  කේ. එම්. පෙරේරා මහතා, දිස්ත්‍රික් ලේකම්, කොළඹ දිස්ත්‍රික් ලේකම් කාර්යාලය
+                </dd>
+              </div>
+
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-slate-50">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_to">To</dt>
+                <dd id="conf-to" class="sm:col-span-2 font-medium text-slate-900">
+                  සියලුම ප්‍රාදේශීය ලේකම්වරුන්, කොළඹ දිස්ත්‍රික්කය
+                </dd>
+              </div>
+
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-white">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_signed_by">Signed By</dt>
+                <dd id="conf-signed-by" class="sm:col-span-2 font-medium text-slate-900">
+                  කේ. එම්. පෙරේරා — දිස්ත්‍රික් ලේකම්
+                </dd>
+              </div>
+
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-slate-50">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_language">Language</dt>
+                <dd id="conf-lang" class="sm:col-span-2 font-medium text-slate-900">
+                  Trilingual Content (Sinhala, Tamil, English)
+                </dd>
+              </div>
+
+              <div class="px-5 py-3 grid grid-cols-1 sm:grid-cols-3 bg-white">
+                <dt class="font-bold text-slate-500 text-xs uppercase" data-i18n="f_body">Full Body Text</dt>
+                <dd id="conf-body" class="sm:col-span-2 font-sans text-xs text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200">
+                  ඉහත සඳහන් චක්‍රලේඛය මගින් නිකුත් කර ඇති නව රාජ්‍ය භාෂා ප්‍රතිපත්ති මාර්ගෝපදේශ අනුව ඔබේ බලප්‍රදේශයේ සියලුම රාජ්‍ය ලිපිගොනු සිංහල, දෙමළ සහ ඉංග්‍රීසි භාෂා ත්‍රිත්වයෙන්ම ලේඛනගත කළ යුතුය.
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <!-- Privacy & Session Ending Message (Strict Prompt Requirement) -->
+          <div class="bg-slate-50 border border-slate-300 rounded-lg p-4 flex items-center space-x-3 text-xs text-slate-700">
+            <svg class="w-6 h-6 text-slate-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            <div data-i18n="s5_privacy_notice">
+              <strong>Government Privacy &amp; Data Minimization Notice:</strong> The physical photograph taken on the phone is used strictly in-memory during extraction and is <strong>not retained</strong> on either the phone or TRISCRIPT servers after this save action completes. Only the verified text fields are transmitted to your department's host registry.
+            </div>
+          </div>
+
+          <!-- Action Buttons: Back to Edit & Final Host Save -->
+          <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <button onclick="switchScreen('screen4')" class="w-full sm:w-auto px-5 py-2.5 border-2 border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-sm rounded gov-focus transition" data-i18n="s5_btn_back">
+              &larr; Back to Edit
+            </button>
+
+            <button onclick="handleFinalSave()" class="w-full sm:w-auto px-8 py-3 bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-base rounded shadow-md gov-focus flex items-center justify-center space-x-2 transition" data-i18n="s5_btn_save">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+              <span>Save to Host System</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 6: LANGUAGE SELECTION AND TRANSLATED INTERFACE COMPARISON -->
+    <!-- ========================================================================= -->
+    <section id="screen6-container" class="screen-view hidden">
+      <div class="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden p-6 sm:p-8 space-y-6">
+        
+        <div>
+          <h1 class="text-2xl font-extrabold text-slate-900" data-i18n="s6_heading">
+            Trilingual Interface System (භාෂා තේරීම / மொழித் தெரிவு)
+          </h1>
+          <p class="text-sm text-slate-600 mt-1" data-i18n="s6_subheading">
+            Demonstrating how TRISCRIPT delivers identical, zero-friction administrative workflows across English, Sinhala (සිංහල), and Tamil (தமிழ்) with institutional terminology.
+          </p>
+        </div>
+
+        <!-- Language switcher selector bar inside screen 6 -->
+        <div class="bg-slate-100 p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 border border-slate-200">
+          <span class="text-xs font-bold text-slate-700 uppercase tracking-wide">Select active prototype language:</span>
+          <div class="flex items-center space-x-2">
+            <button onclick="changeLanguage('en')" class="lang-pill px-3 py-1.5 rounded text-xs font-bold bg-white text-blue-700 shadow-sm border border-slate-300 gov-focus" id="pill-en">English</button>
+            <button onclick="changeLanguage('si')" class="lang-pill px-3 py-1.5 rounded text-xs font-bold bg-white text-slate-700 hover:text-slate-900 border border-slate-300 gov-focus" id="pill-si">සිංහල (Sinhala)</button>
+            <button onclick="changeLanguage('ta')" class="lang-pill px-3 py-1.5 rounded text-xs font-bold bg-white text-slate-700 hover:text-slate-900 border border-slate-300 gov-focus" id="pill-ta">தமிழ் (Tamil)</button>
+          </div>
+        </div>
+
+        <!-- 3-Column Comparative Overview Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+          
+          <!-- Column 1: English (Official Reference) -->
+          <div class="border-2 border-slate-300 rounded-lg p-5 bg-white space-y-4">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+              <span class="font-extrabold text-sm text-slate-900">English (UK/LK)</span>
+              <span class="text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono">Standard</span>
+            </div>
+            <dl class="space-y-2 text-xs">
+              <div>
+                <dt class="text-slate-500 font-semibold">Heading:</dt>
+                <dd class="font-bold text-slate-900">Scan a Letter</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">Status Waiting:</dt>
+                <dd class="font-medium text-slate-800">Waiting for phone connection</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">Phone Action:</dt>
+                <dd class="font-bold text-blue-700">Take Photo / Retake Photo</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">Reference Field:</dt>
+                <dd class="font-mono text-slate-800">My Number / Your Number</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">Verification CTA:</dt>
+                <dd class="font-bold text-slate-900">Confirm Details &rarr; Save</dd>
+              </div>
+            </dl>
+            <button onclick="changeLanguage('en'); switchScreen('screen1');" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded border border-slate-300 gov-focus">
+              Apply English to Workflow
+            </button>
+          </div>
+
+          <!-- Column 2: Sinhala (සිංහල) -->
+          <div class="border-2 border-blue-200 bg-blue-50/30 rounded-lg p-5 space-y-4">
+            <div class="flex items-center justify-between pb-2 border-b border-blue-200">
+              <span class="font-extrabold text-sm text-blue-950">සිංහල (Sinhala)</span>
+              <span class="text-[11px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-medium">රාජ්‍ය භාෂාව</span>
+            </div>
+            <dl class="space-y-2 text-xs">
+              <div>
+                <dt class="text-slate-500 font-semibold">ශීර්ෂය (Heading):</dt>
+                <dd class="font-bold text-slate-900">ලිපියක් ස්කෑන් කරන්න</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">තත්ත්වය (Status):</dt>
+                <dd class="font-medium text-slate-800">දුරකථන සම්බන්ධතාවය අපේක්ෂාවෙන්</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">දුරකථන ක්‍රියාව (Phone):</dt>
+                <dd class="font-bold text-blue-700">ඡායාරූපය ගන්න / නැවත ගන්න</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">යොමු ක්ෂේත්‍ර (Fields):</dt>
+                <dd class="font-medium text-slate-800">මගේ අංකය / ඔබේ අංකය</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">තහවුරු කිරීම (CTA):</dt>
+                <dd class="font-bold text-slate-900">තොරතුරු තහවුරු කරන්න &rarr; සුරකින්න</dd>
+              </div>
+            </dl>
+            <button onclick="changeLanguage('si'); switchScreen('screen1');" class="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded gov-focus shadow-sm">
+              සිංහල භාෂාවෙන් අතුරුමුහුණත බලන්න
+            </button>
+          </div>
+
+          <!-- Column 3: Tamil (தமிழ்) -->
+          <div class="border-2 border-slate-300 rounded-lg p-5 bg-white space-y-4">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+              <span class="font-extrabold text-sm text-slate-900">தமிழ் (Tamil)</span>
+              <span class="text-[11px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-medium">அரச மொழி</span>
+            </div>
+            <dl class="space-y-2 text-xs">
+              <div>
+                <dt class="text-slate-500 font-semibold">தலைப்பு (Heading):</dt>
+                <dd class="font-bold text-slate-900">கடிதத்தை ஸ்கேன் செய்க</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">நிலைமை (Status):</dt>
+                <dd class="font-medium text-slate-800">தொலைபேசி இணைப்புக்காக காத்திருக்கிறது</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">தொலைபேசி செயல் (Phone):</dt>
+                <dd class="font-bold text-blue-700">புகைப்படம் எடு / மீண்டும் எடு</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">குறிப்பு புலங்கள் (Fields):</dt>
+                <dd class="font-medium text-slate-800">எனது இலக்கம் / உங்கள் இலக்கம்</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500 font-semibold">உறுதிப்படுத்தல் (CTA):</dt>
+                <dd class="font-bold text-slate-900">விபரங்களை உறுதிப்படுத்துக &rarr; சேமி</dd>
+              </div>
+            </dl>
+            <button onclick="changeLanguage('ta'); switchScreen('screen1');" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded border border-slate-300 gov-focus">
+              தமிழை இடைமுகத்தில் பயன்படுத்துக
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 7: ACCESSIBILITY STATES (WCAG AAA GOVERNMENT STANDARDS) -->
+    <!-- ========================================================================= -->
+    <section id="screen7-container" class="screen-view hidden">
+      <div class="bg-white border-2 border-slate-300 rounded-lg shadow-sm overflow-hidden p-6 sm:p-8 space-y-6">
+        
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-300">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="bg-black text-white px-2.5 py-0.5 rounded text-xs font-bold font-mono">WCAG 2.1 AAA</span>
+              <h1 class="text-2xl font-extrabold text-slate-900">Accessibility Treatment &amp; Compliant Controls</h1>
+            </div>
+            <p class="text-sm text-slate-700 mt-1">
+              Demonstrating higher contrast ratio (≥ 7:1), 4px black keyboard focus rings, enlarged typography, screen-reader aria labels, and explicit field error states.
+            </p>
+          </div>
+
+          <button onclick="toggleA11yMode()" class="px-5 py-2.5 bg-black text-white hover:bg-slate-800 font-extrabold text-sm rounded shadow gov-focus transition">
+            Toggle System-Wide A11y Mode
+          </button>
+        </div>
+
+        <!-- Interactive Accessibility Showcase Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- Box 1: Keyboard Focus & High Contrast Forms -->
+          <div class="border-2 border-black p-5 rounded-lg bg-white space-y-4">
+            <h2 class="text-base font-bold text-black flex items-center space-x-2">
+              <span class="w-3 h-3 bg-black rounded-full"></span>
+              <span>1. Visible Focus States &amp; Screen Reader Labels</span>
+            </h2>
+            <p class="text-xs text-slate-700">
+              Press <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-400 rounded text-[11px] font-mono">Tab</kbd> to inspect the high-visibility focus ring that prevents navigation disorientation for keyboard users.
+            </p>
+
+            <div class="space-y-3 pt-2">
+              <div>
+                <label for="a11y-demo-input" class="block text-xs font-extrabold text-black uppercase tracking-wider mb-1">
+                  Reference Number (ලේඛන යොමු අංකය)
+                </label>
+                <input type="text" id="a11y-demo-input" value="TEST/COL/ADM/2025/084" aria-describedby="a11y-demo-help" class="w-full px-4 py-3 border-2 border-black rounded text-sm font-mono font-bold text-black focus:outline focus:outline-4 focus:outline-black focus:outline-offset-2">
+                <span id="a11y-demo-help" class="text-xs text-slate-600 mt-1 block">Properly labelled control with explicit ARIA description.</span>
+              </div>
+
+              <div>
+                <label for="a11y-demo-date" class="block text-xs font-extrabold text-black uppercase tracking-wider mb-1">
+                  Document Letter Date (ලිපියේ දිනය)
+                </label>
+                <input type="date" id="a11y-demo-date" value="2025-02-14" class="w-full px-4 py-3 border-2 border-black rounded text-sm text-black font-semibold focus:outline focus:outline-4 focus:outline-black focus:outline-offset-2">
+              </div>
+            </div>
+          </div>
+
+          <!-- Box 2: Clear Validation & Low Confidence Error Messages -->
+          <div class="border-2 border-rose-600 p-5 rounded-lg bg-rose-50/50 space-y-4">
+            <h2 class="text-base font-bold text-rose-950 flex items-center space-x-2">
+              <span class="w-3 h-3 bg-rose-600 rounded-full"></span>
+              <span>2. High-Visibility Validation &amp; Error Callouts</span>
+            </h2>
+            <p class="text-xs text-rose-900">
+              Clear error styling for ambiguous characters, skewed scans, or missing required fields with unmistakable color and text indicators.
+            </p>
+
+            <!-- Error State Component Mockup -->
+            <div class="space-y-3 pt-2">
+              <div class="border-2 border-rose-600 bg-white p-3 rounded">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-extrabold text-rose-900 uppercase">From: Sender Office</span>
+                  <span class="text-[11px] font-bold text-white bg-rose-700 px-2 py-0.5 rounded">Required Field Error</span>
+                </div>
+                <div class="mt-2 text-sm text-rose-950 font-medium">
+                  [!] Could not parse signatory office with adequate confidence (32%).
+                </div>
+                <p class="text-xs text-rose-800 mt-1">
+                  Please review the physical paper or type the correct office manually before saving.
+                </p>
+              </div>
+
+              <div class="bg-black text-white p-3 rounded flex items-center justify-between text-xs font-bold">
+                <span>Contrast Ratio on CTA Buttons: 14.8 : 1</span>
+                <span class="text-emerald-400">&check; Exceeds AAA Standards</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="pt-2 text-center">
+          <button onclick="switchScreen('screen4')" class="px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm rounded gov-focus">
+            Return to Main Letter Review Screen
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-white border-t border-slate-200 mt-12 py-6 text-xs text-slate-600">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <span class="font-extrabold text-slate-900">TRISCRIPT</span>
+        <span>&bull;</span>
+        <span>Open-source Trilingual Document Parser for Sri Lanka Government Offices</span>
+      </div>
+      <div class="flex items-center space-x-4 font-mono text-[11px]">
+        <span>Strict Zero-Retention Policy</span>
+        <span>&bull;</span>
+        <span>Sinhala &bull; Tamil &bull; English</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- SCRIPT LOGIC FOR WORKFLOW STATE MANAGEMENT & LOCALIZATION -->
+  <script>
+    // -------------------------------------------------------------------------
+    // TRILINGUAL LOCALIZATION DICTIONARY (Screen 6 Requirement)
+    // -------------------------------------------------------------------------
+    const translations = {
+      en: {
+        step1_title: "Scan QR",
+        step2_title: "Phone Capture",
+        step3_title: "Reading & Extracting",
+        step4_title: "Review Fields",
+        step5_title: "Confirmed & Save",
+        s1_heading: "Scan a Letter",
+        s1_subheading: "Scan the QR code below using your mobile phone camera to take a photograph of the physical paper letter.",
+        s1_status_waiting: "Session Status: Waiting for phone connection",
+        s1_status_desc: "This computer will automatically update the moment your phone captures the letter.",
+        s1_instruct_title: "Instructions for Phone Camera:",
+        s1_step_1: "Open the default camera app on any smartphone (Android or iPhone).",
+        s1_step_2: "Point your camera at the QR code and tap the web link that appears on screen.",
+        s1_step_3: "Photograph the document in good lighting. No app installation required.",
+        s1_no_app: "No mobile app installation is required. Works securely in Chrome, Safari, Firefox, or any standard mobile browser.",
+        phone_connected: "Connected to Computer: Workstation LK-WP-01",
+        phone_instruction_title: "Take a photo of your letter",
+        phone_instruction_desc: "Position the physical paper document flat. Ensure all borders and reference numbers are visible.",
+        phone_btn_take: "Take Photo",
+        phone_btn_retake: "Retake Photo",
+        phone_btn_use: "Use Photo →",
+        phone_sending_title: "Sending photograph to computer...",
+        phone_sending_desc: "Transferring high-resolution scan via encrypted local socket.",
+        phone_expired_title: "Session has expired",
+        phone_expired_desc: "Please return to the computer and scan a fresh QR code.",
+        s3_heading: "Letter Processing",
+        s3_subheading: "Photograph received from phone. TRISCRIPT neural OCR is parsing trilingual document content.",
+        s3_photo_received_label: "Captured Letter Preview:",
+        s3_progress_steps_title: "Extraction Pipeline:",
+        s3_status_received: "Photo received",
+        s3_status_reading: "Reading letter (Sinhala • Tamil • English scripts)",
+        s3_status_extracting: "Extracting letter details & reference indices",
+        s3_overall_progress: "Overall Progress",
+        s3_error_title: "Quality Assessment: Low Clarity Warning",
+        s3_error_desc: "Notice: Ensure the paper is not blurred or unevenly shadowed. If extraction confidence is low, you can retake the photo immediately without losing your computer session.",
+        s3_btn_retake: "← Return to Capture Step & Retake",
+        s3_btn_proceed: "Proceed to Review Screen →",
+        s4_heading: "Extracted Letter Review",
+        s4_subheading: "Verify all extracted values against the photographed paper letter on the left. All fields are editable.",
+        s4_btn_retake: "Retake Photo",
+        s4_btn_confirm: "Confirm Details",
+        s4_btn_confirm_submit: "Confirm Details",
+        s4_no_auto_save: "Verification Requirement: Details are never saved automatically. The government officer must review and click 'Confirm Details' before submission.",
+        s4_doc_preview_title: "Original Photographed Letter:",
+        s4_fields_title: "Extracted Metadata & Content Fields",
+        f_subject: "Subject",
+        f_my_number: "My Number",
+        f_your_number: "Your Number",
+        f_date: "Date",
+        f_language: "Detected Language",
+        f_from: "From (Sender Name, Post, Office)",
+        f_to: "To (Addressee)",
+        f_signed_by: "Signed By (Signatory Name & Post)",
+        f_body: "Body (Full Extracted Letter Text for Searching)",
+        s5_confirmed_title: "Letter Details Successfully Reviewed & Verified",
+        s5_confirmed_desc: "All 8 required fields have been inspected and confirmed by the officer. The structured record is ready to be committed to the official government document repository.",
+        s5_table_heading: "Official Administrative Record Metadata",
+        s5_privacy_notice: "Government Privacy & Data Minimization Notice: The physical photograph taken on the phone is used strictly in-memory during extraction and is not retained on either the phone or TRISCRIPT servers after this save action completes. Only the verified text fields are transmitted to your department's host registry.",
+        s5_btn_back: "← Back to Edit",
+        s5_btn_save: "Save to Host System",
+        s6_heading: "Trilingual Interface System (භාෂා තේරීම / மொழித் தெரிவு)",
+        s6_subheading: "Demonstrating how TRISCRIPT delivers identical, zero-friction administrative workflows across English, Sinhala (සිංහල), and Tamil (தமிழ்) with institutional terminology."
+      },
+      si: {
+        step1_title: "QR ස්කෑන්",
+        step2_title: "දුරකථන ඡායාරූපය",
+        step3_title: "කියවීම සහ හඳුනාගැනීම",
+        step4_title: "තොරතුරු පරීක්ෂාව",
+        step5_title: "තහවුරු කිරීම සහ සුරැකීම",
+        s1_heading: "ලිපියක් ස්කෑන් කරන්න",
+        s1_subheading: "ලිපියේ ඡායාරූපයක් ලබා ගැනීම සඳහා ඔබගේ ජංගම දුරකථන කැමරාවෙන් පහත QR කේතය ස්කෑන් කරන්න.",
+        s1_status_waiting: "සැසි තත්ත්වය: දුරකථන සම්බන්ධතාවය අපේක්ෂාවෙන්",
+        s1_status_desc: "ඔබේ දුරකථනයෙන් ලිපිය ඡායාරූපගත කළ වහාම මෙම පරිගණකය ස්වයංක්‍රීයව යාවත්කාලීන වේ.",
+        s1_instruct_title: "දුරකථන කැමරා උපදෙස්:",
+        s1_step_1: "ඕනෑම ස්මාර්ට් ජංගම දුරකථනයක සාමාන්‍ය කැමරාව විවෘත කරන්න.",
+        s1_step_2: "කැමරාව QR කේතය දෙසට යොමු කර තිරයේ දිස්වන වෙබ් සබැඳිය ස්පර්ශ කරන්න.",
+        s1_step_3: "හොඳ ආලෝකයක් ඇති ස්ථානයක ලිපිය ඡායාරූපගත කරන්න. කිසිදු යෙදුමක් ස්ථාපනය කිරීම අවශ්‍ය නොවේ.",
+        s1_no_app: "ජංගම යෙදුම් ස්ථාපනය කිරීම අවශ්‍ය නොවේ. Chrome, Safari, Firefox හෝ ඕනෑම සාමාන්‍ය බ්‍රවුසරයක ක්‍රියාත්මක වේ.",
+        phone_connected: "පරිගණකය සමඟ සම්බන්ධ විය: Workstation LK-WP-01",
+        phone_instruction_title: "ඔබගේ ලිපියේ ඡායාරූපයක් ගන්න",
+        phone_instruction_desc: "ලිපිය සමතලා මතුපිටක තබන්න. සියලුම මායිම් සහ යොමු අංක පැහැදිලිව පෙනෙන බව තහවුරු කරගන්න.",
+        phone_btn_take: "ඡායාරූපය ගන්න",
+        phone_btn_retake: "නැවත ඡායාරූපය ගන්න",
+        phone_btn_use: "ඡායාරූපය භාවිත කරන්න →",
+        phone_sending_title: "ඡායාරූපය පරිගණකයට යවමින් පවතී...",
+        phone_sending_desc: "අධි-විභේදන ස්කෑන් ලේඛනය ආරක්ෂිතව සම්ප්‍රේෂණය වේ.",
+        phone_expired_title: "සැසිය කල් ඉකුත් වී ඇත",
+        phone_expired_desc: "කරුණාකර පරිගණකය වෙත ගොස් නව QR කේතයක් ස්කෑන් කරන්න.",
+        s3_heading: "ලිපිය කියවීම හා සැකසීම",
+        s3_subheading: "දුරකථනයෙන් ඡායාරූපය ලැබිණි. TRISCRIPT මගින් ත්‍රිභාෂා ලේඛනය කියවමින් පවතී.",
+        s3_photo_received_label: "ලැබුණු ලිපියේ පෙරදසුන:",
+        s3_progress_steps_title: "හඳුනාගැනීමේ පියවර:",
+        s3_status_received: "ඡායාරූපය ලැබිණි",
+        s3_status_reading: "ලිපිය කියවමින් පවතී (සිංහල • දෙමළ • ඉංග්‍රීසි අක්ෂර)",
+        s3_status_extracting: "ලිපියේ තොරතුරු සහ යොමු අංක වෙන්කර ගනිමින් පවතී",
+        s3_overall_progress: "සමස්ත ප්‍රගතිය",
+        s3_error_title: "තත්ත්ව පරීක්ෂාව: නොපැහැදිලි ඡායාරූප අනතුරු ඇඟවීම",
+        s3_error_desc: "සටහන: ලිපිය බොඳ වී හෝ සෙවනැලි වැටී නොමැති බව තහවුරු කරගන්න. ඔබට අවශ්‍ය නම් නැවත ඡායාරූපයක් ගත හැක.",
+        s3_btn_retake: "← ආපසු ගොස් නැවත ඡායාරූපයක් ගන්න",
+        s3_btn_proceed: "පරීක්ෂා කිරීමේ තිරය වෙත යන්න →",
+        s4_heading: "හඳුනාගත් ලිපි තොරතුරු පරීක්ෂාව",
+        s4_subheading: "වම් පස ඇති මුල් ලිපිය සමඟ සැසඳීමෙන් තොරතුරු නිවැරදි දැයි තහවුරු කරන්න. සියලුම ක්ෂේත්‍ර සංස්කරණය කළ හැක.",
+        s4_btn_retake: "නැවත ඡායාරූපයක් ගන්න",
+        s4_btn_confirm: "තොරතුරු තහවුරු කරන්න",
+        s4_btn_confirm_submit: "තොරතුරු තහවුරු කරන්න",
+        s4_no_auto_save: "අවධානයට: තොරතුරු කිසිවිටෙකත් ස්වයංක්‍රීයව සුරැකෙන්නේ නැත. නිලධාරියා විසින් පරීක්ෂා කර 'තොරතුරු තහවුරු කරන්න' එබිය යුතුය.",
+        s4_doc_preview_title: "මුල් ඡායාරූපගත ලිපිය:",
+        s4_fields_title: "හඳුනාගත් ලේඛන තොරතුරු ක්ෂේත්‍ර",
+        f_subject: "විෂය",
+        f_my_number: "මගේ අංකය",
+        f_your_number: "ඔබේ අංකය",
+        f_date: "දිනය",
+        f_language: "හඳුනාගත් භාෂාව",
+        f_from: "එවන්නා (නම, තනතුර, කාර්යාලය)",
+        f_to: "ලබන්නා",
+        f_signed_by: "අත්සන් කළේ (නම සහ තනතුර)",
+        f_body: "සම්පූර්ණ අන්තර්ගතය (සෙවීම් සඳහා)",
+        s5_confirmed_title: "ලිපි තොරතුරු සාර්ථකව පරීක්ෂා කර තහවුරු කරන ලදී",
+        s5_confirmed_desc: "අවශ්‍ය සියලුම ක්ෂේත්‍ර 8 නිලධාරියා විසින් සත්‍යාපනය කර ඇත. මෙම වාර්තාව රාජ්‍ය ලිපිගොනු පද්ධතියට එක් කිරීමට සූදානම්ය.",
+        s5_table_heading: "නිල පරිපාලන වාර්තා දත්ත",
+        s5_privacy_notice: "රහස්‍යතා නිවේදනය: දුරකථනයෙන් ගත් ඡායාරූපය තොරතුරු කියවීමෙන් පසු කිසිදු සේවාදායකයක රඳවා නොගන්නා අතර ස්වයංක්‍රීයව මැකී යයි. සුරැකෙන්නේ තහවුරු කළ දත්ත පමණි.",
+        s5_btn_back: "← සංස්කරණයට ආපසු",
+        s5_btn_save: "රාජ්‍ය පද්ධතියට සුරකින්න",
+        s6_heading: "ත්‍රිභාෂා අතුරුමුහුණත් පද්ධතිය",
+        s6_subheading: "TRISCRIPT පද්ධතිය සිංහල, දෙමළ සහ ඉංග්‍රීසි භාෂා ත්‍රිත්වයෙන්ම රාජ්‍ය නිලධාරීන්ට එක හා සමානව භාවිත කළ හැකි අයුරු."
+      },
+      ta: {
+        step1_title: "QR ஸ்கேன்",
+        step2_title: "புகைப்படம் எடுத்தல்",
+        step3_title: "வாசித்தல் மற்றும் பிரித்தெடுத்தல்",
+        step4_title: "விபர மீளாய்வு",
+        step5_title: "உறுதிப்படுத்தல் & சேமித்தல்",
+        s1_heading: "கடிதத்தை ஸ்கேன் செய்க",
+        s1_subheading: "கடிதத்தைப் புகைப்படம் எடுக்க உங்கள் கைபேசி கமராவைப் பயன்படுத்தி கீழே உள்ள QR குறியீட்டை ஸ்கேன் செய்யவும்.",
+        s1_status_waiting: "அமர்வு நிலைமை: தொலைபேசி இணைப்புக்காக காத்திருக்கிறது",
+        s1_status_desc: "உங்கள் கைபேசியில் கடிதம் படம் பிடிக்கப்பட்டவுடன் இந்த கணினி தானாகவே புதுப்பிக்கப்படும்.",
+        s1_instruct_title: "கைபேசி கமரா வழிகாட்டல்:",
+        s1_step_1: "எந்தவொரு ஸ்மார்ட்போனிலும் சாதாரண கமராவைத் திறக்கவும்.",
+        s1_step_2: "QR குறியீட்டின் மீது கமராவைக் காட்டி, திரையில் தோன்றும் இணைய இணைப்பைத் தொடவும்.",
+        s1_step_3: "நல்ல வெளிச்சத்தில் கடிதத்தைப் படம் எடுக்கவும். எந்த செயலியையும் நிறுவ வேண்டியதில்லை.",
+        s1_no_app: "மொபைல் செயலி நிறுவல் தேவையில்லை. Chrome, Safari, Firefox அல்லது எந்தவொரு உலாவியிலும் பாதுகாப்பாக இயங்கும்.",
+        phone_connected: "கணினியுடன் இணைக்கப்பட்டது: Workstation LK-WP-01",
+        phone_instruction_title: "உங்கள் கடிதத்தைப் புகைப்படம் எடுக்கவும்",
+        phone_instruction_desc: "கடிதத்தை தட்டையான மேற்பரப்பில் வைக்கவும். அனைத்து எல்லைகளும் குறிப்பு எண்களும் தெளிவாகத் தெரிவதை உறுதிப்படுத்தவும்.",
+        phone_btn_take: "புகைப்படம் எடு",
+        phone_btn_retake: "மீண்டும் புகைப்படம் எடு",
+        phone_btn_use: "புகைப்படத்தைப் பயன்படுத்துக →",
+        phone_sending_title: "புகைப்படம் கணினிக்கு அனுப்பப்படுகிறது...",
+        phone_sending_desc: "உயர் தெளிவுத்திறன் ஆவணம் பாதுகாப்பாக மாற்றப்படுகிறது.",
+        phone_expired_title: "அமர்வு காலாவதியானது",
+        phone_expired_desc: "தயவுசெய்து கணினிக்குத் திரும்பி புதிய QR குறியீட்டை ஸ்கேன் செய்யவும்.",
+        s3_heading: "கடிதம் செயலாக்கம்",
+        s3_subheading: "கைபேசியிலிருந்து புகைப்படம் பெறப்பட்டது. TRISCRIPT மும்மொழி ஆவணத்தை வாசிக்கிறது.",
+        s3_photo_received_label: "பெறப்பட்ட கடிதத்தின் முன்னோட்டம்:",
+        s3_progress_steps_title: "பிரித்தெடுத்தல் படிகள்:",
+        s3_status_received: "புகைப்படம் பெறப்பட்டது",
+        s3_status_reading: "கடிதம் வாசிக்கப்படுகிறது (சிங்களம் • தமிழ் • ஆங்கிலம்)",
+        s3_status_extracting: "கடித விபரங்கள் மற்றும் குறிப்பு எண்கள் பிரித்தெடுக்கப்படுகின்றன",
+        s3_overall_progress: "மொத்த முன்னேற்றம்",
+        s3_error_title: "தர மதிப்பீடு: தெளிவின்மை எச்சரிக்கை",
+        s3_error_desc: "குறிப்பு: கடிதம் மங்கலாகவோ அல்லது நிழல் படிந்தோ இல்லை என்பதை உறுதிப்படுத்தவும். தேவைப்பட்டால் மீண்டும் படம் எடுக்கலாம்.",
+        s3_btn_retake: "← மீண்டும் படம் எடுக்கத் திரும்புக",
+        s3_btn_proceed: "மீளாய்வுத் திரைக்குச் செல்க →",
+        s4_heading: "பிரித்தெடுக்கப்பட்ட கடித விபர மீளாய்வு",
+        s4_subheading: "இடதுபுறத்தில் உள்ள அசல் கடிதத்துடன் ஒப்பிட்டு அனைத்து விபரங்களையும் சரிபார்க்கவும். அனைத்து புலங்களையும் திருத்தலாம்.",
+        s4_btn_retake: "மீண்டும் படம் எடு",
+        s4_btn_confirm: "விபரங்களை உறுதிப்படுத்துக",
+        s4_btn_confirm_submit: "விபரங்களை உறுதிப்படுத்துக",
+        s4_no_auto_save: "கவனத்திற்கு: விபரங்கள் ஒருபோதும் தானாகச் சேமிக்கப்படாது. அதிகாரி சரிபார்த்து 'விபரங்களை உறுதிப்படுத்துக' என்பதை அழுத்த வேண்டும்.",
+        s4_doc_preview_title: "அசல் புகைப்படக் கடிதம்:",
+        s4_fields_title: "பிரித்தெடுக்கப்பட்ட ஆவணப் புலங்கள்",
+        f_subject: "விடயம்",
+        f_my_number: "எனது இலக்கம்",
+        f_your_number: "உங்கள் இலக்கம்",
+        f_date: "திகதி",
+        f_language: "கண்டறியப்பட்ட மொழி",
+        f_from: "அனுப்புநர் (பெயர், பதவி, அலுவலகம்)",
+        f_to: "பெறுநர்",
+        f_signed_by: "கையொப்பமிட்டவர் (பெயர் & பதவி)",
+        f_body: "முழு உள்ளடக்கம் (தேடலுக்காக)",
+        s5_confirmed_title: "கடித விபரங்கள் வெற்றிகரமாக மீளாய்வு செய்யப்பட்டு உறுதிப்படுத்தப்பட்டன",
+        s5_confirmed_desc: "தேவையான அனைத்து 8 புலங்களும் அதிகாரியால் சரிபார்க்கப்பட்டுள்ளன. இந்த ஆவணம் அரச முறைமையில் சேமிக்கத் தயாராக உள்ளது.",
+        s5_table_heading: "அதிகாரப்பூர்வ ஆவண விபரங்கள்",
+        s5_privacy_notice: "தனியுரிமை அறிவிப்பு: கைபேசியில் எடுக்கப்பட்ட புகைப்படம் தகவல்களை வாசித்த பின்னர் எந்த சேவையகத்திலும் சேமிக்கப்படாது, தானாகவே அழிக்கப்படும்.",
+        s5_btn_back: "← திருத்தத்திற்குத் திரும்பு",
+        s5_btn_save: "அரச முறைமையில் சேமிக்குக",
+        s6_heading: "மும்மொழி இடைமுக அமைப்பு",
+        s6_subheading: "TRISCRIPT எவ்வாறு சிங்களம், தமிழ் மற்றும் ஆங்கிலத்தில் அரச அதிகாரிகளுக்கு ஒரே மாதிரியான பயன்பாட்டை வழங்குகிறது என்பதைக் காட்டுகிறது."
+      }
+    };
+
+    let currentLang = 'en';
+
+    function changeLanguage(langKey) {
+      currentLang = langKey;
+      document.getElementById('lang-select').value = langKey;
+      const dict = translations[langKey] || translations['en'];
+
+      // Update text in elements with data-i18n attribute
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) {
+          el.innerHTML = dict[key];
+        }
+      });
+
+      // Update lang pills in screen 6
+      document.querySelectorAll('.lang-pill').forEach(btn => {
+        btn.classList.remove('bg-blue-700', 'text-white');
+        btn.classList.add('bg-white', 'text-slate-700');
+      });
+      const activePill = document.getElementById('pill-' + langKey);
+      if (activePill) {
+        activePill.classList.remove('bg-white', 'text-slate-700');
+        activePill.classList.add('bg-blue-700', 'text-white');
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // SCREEN SWITCHING & WORKFLOW STATE NAVIGATION
+    // -------------------------------------------------------------------------
+    function switchScreen(screenId) {
+      // Hide all containers
+      document.querySelectorAll('.screen-view').forEach(view => {
+        view.classList.add('hidden');
+      });
+
+      // Show chosen screen container
+      const target = document.getElementById(screenId + '-container');
+      if (target) {
+        target.classList.remove('hidden');
+      }
+
+      // Update top workflow nav button styles
+      for (let i = 1; i <= 7; i++) {
+        const btn = document.getElementById('nav-btn-screen' + i);
+        if (btn) {
+          if ('screen' + i === screenId) {
+            btn.className = "px-2.5 py-1 text-xs font-semibold rounded bg-white text-blue-700 shadow-sm gov-focus";
+          } else {
+            btn.className = "px-2.5 py-1 text-xs font-semibold rounded text-slate-600 hover:text-slate-900 gov-focus";
+          }
+        }
+      }
+
+      // Update Step progress numbers (1-5)
+      const stepMapping = {
+        'screen1': 1,
+        'screen2': 2,
+        'screen3': 3,
+        'screen4': 4,
+        'screen5': 5,
+        'screen6': 1,
+        'screen7': 4
+      };
+      const activeStep = stepMapping[screenId] || 1;
+      for (let s = 1; s <= 5; s++) {
+        const ind = document.getElementById('step-ind-' + s);
+        if (ind) {
+          const badge = ind.querySelector('span:first-child');
+          const title = ind.querySelector('span:last-child');
+          if (s < activeStep) {
+            badge.className = "w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs";
+            badge.innerHTML = "&check;";
+            title.className = "font-medium text-slate-600";
+          } else if (s === activeStep) {
+            badge.className = "w-6 h-6 rounded-full bg-blue-700 text-white flex items-center justify-center font-bold text-xs";
+            badge.innerHTML = s;
+            title.className = "font-bold text-slate-900";
+          } else {
+            badge.className = "w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs";
+            badge.innerHTML = s;
+            title.className = "text-slate-500 font-normal";
+          }
+        }
+      }
+
+      // Scroll smoothly to top of main area
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // -------------------------------------------------------------------------
+    // PHONE SCREEN 2 INTERACTIONS
+    // -------------------------------------------------------------------------
+    function handlePhoneTakePhoto() {
+      // Simulate taking photo: show captured badge and switch to preview action buttons
+      document.getElementById('captured-badge').classList.remove('hidden');
+      document.getElementById('phone-btn-group-initial').classList.add('hidden');
+      document.getElementById('phone-btn-group-preview').classList.remove('hidden');
+    }
+
+    function handlePhoneRetake() {
+      // Retake photo: reset to live lens
+      document.getElementById('captured-badge').classList.add('hidden');
+      document.getElementById('phone-btn-group-preview').classList.add('hidden');
+      document.getElementById('phone-btn-group-initial').classList.remove('hidden');
+    }
+
+    function handlePhoneUsePhoto() {
+      // Show sending toast, then transition to Screen 3 (Processing)
+      document.getElementById('phone-sending-status').classList.remove('hidden');
+      document.getElementById('phone-btn-group-preview').classList.add('hidden');
+      
+      setTimeout(() => {
+        document.getElementById('phone-sending-status').classList.add('hidden');
+        switchScreen('screen3');
+      }, 1200);
+    }
+
+    function togglePhoneSessionExpired() {
+      const alertBox = document.getElementById('phone-expired-alert');
+      alertBox.classList.toggle('hidden');
+    }
+
+    // -------------------------------------------------------------------------
+    // SCREEN 4 -> SCREEN 5 CONFIRMATION
+    // -------------------------------------------------------------------------
+    function confirmLetterDetails() {
+      // Copy current form values to screen 5 display
+      document.getElementById('conf-subject').innerText = document.getElementById('field-subject').value;
+      document.getElementById('conf-my-no').innerText = document.getElementById('field-my-number').value;
+      
+      const yourNoVal = document.getElementById('field-your-number').value.trim();
+      document.getElementById('conf-your-no').innerText = yourNoVal || 'Not Provided / Nil';
+      
+      document.getElementById('conf-date').innerText = document.getElementById('field-date').value;
+      document.getElementById('conf-from').innerText = document.getElementById('field-from').value;
+      document.getElementById('conf-to').innerText = document.getElementById('field-to').value;
+      document.getElementById('conf-signed-by').innerText = document.getElementById('field-signed-by').value;
+      document.getElementById('conf-body').innerText = document.getElementById('field-body').value;
+
+      // Switch to screen 5
+      switchScreen('screen5');
+    }
+
+    function handleFinalSave() {
+      alert("Success: Official administrative record saved to host government registry. Session closed; photo data discarded per privacy policy.");
+      switchScreen('screen1');
+    }
+
+    // -------------------------------------------------------------------------
+    // ACCESSIBILITY MODE TOGGLE (SCREEN 7 DEMONSTRATION)
+    // -------------------------------------------------------------------------
+    let a11yActive = false;
+    function toggleA11yMode() {
+      a11yActive = !a11yActive;
+      const body = document.body;
+      const statusText = document.getElementById('a11y-status-text');
+
+      if (a11yActive) {
+        body.classList.add('a11y-enhanced', 'a11y-large-text');
+        statusText.innerText = "A11y: High Contrast (ON)";
+      } else {
+        body.classList.remove('a11y-enhanced', 'a11y-large-text');
+        statusText.innerText = "A11y: Standard";
+      }
+    }
+
+    // Countdown simulation for Screen 1 session timer
+    let secondsLeft = 282; // 04:42
+    setInterval(() => {
+      if (secondsLeft > 0) {
+        secondsLeft--;
+        const mins = Math.floor(secondsLeft / 60);
+        const secs = secondsLeft % 60;
+        const display = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
+        const timerEl = document.getElementById('session-timer');
+        if (timerEl) timerEl.innerText = display;
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

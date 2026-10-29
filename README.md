@@ -1,314 +1,141 @@
 # TRISCRIPT
 
-**TRISCRIPT turns a phone photo of a letter into filled-in fields on a computer, in Sinhala, Tamil and English.**
+TRISCRIPT is an open-source, local-network application for reading a photographed letter and preparing editable fields in English, Sinhala, and Tamil. It uses Tesseract OCR and stores a record only after a person reviews it and explicitly confirms saving.
 
-Scan a QR code on your computer, photograph the letter with your phone, and the details appear on the computer for you to check — no typing, no app to install.
+**Privacy:** uploaded photos are processed on the computer running the backend and removed when OCR finishes. PostgreSQL stores confirmed field values only; it never stores the uploaded photo. The application does not send documents to an external service, and the frontend's Next.js telemetry is disabled by the provided npm and LAN scripts.
 
-> **Only invented test letters are used.** Mark them "TEST LETTER, NOT VALID", with reference numbers starting `TEST/`. Never add real letters, real names, real reference numbers, official letterheads, government seals, or authentic official documents.
+## Requirements
 
-> **Status:** starting. Built in the open by the Eastern Province IT Volunteer Programme, Sri Lanka.
+- Go 1.22 or later
+- Node.js 22 and npm
+- PostgreSQL 14 or later
+- ImageMagick 7 (`magick` command)
+- Tesseract with the `eng`, `sin`, and `tam` trained data installed
 
----
+The app must be able to run `magick`, `tesseract`, and all three Tesseract languages from its environment. Do not configure ImageMagick 6's `convert` command in place of `magick`.
 
-## Architecture
+## Run on Windows
 
-```
-Phone browser           Next.js (port 3000)        Go backend (port 8080)
-     │                        │                            │
-     │── GET /capture/{id} ──►│                            │
-     │                        │                            │
-     │── POST /api/session/   │── POST /api/session ──────►│ creates session
-     │      {id}/photo ──────►│── POST /api/session/       │ stores photo
-     │                        │      {id}/photo ──────────►│
-     │                        │                            │
-Computer browser        Next.js proxies             Go is authoritative
-     │── POST /api/session ──►│── POST /api/session ──────►│
-     │── GET /api/session/    │── GET /api/session/{id} ──►│ polls status
-     │      {id} (poll) ──────│                            │
-     │── GET /api/session/    │── GET /api/session/        │
-     │      {id}/photo ───────│      {id}/photo ──────────►│ retrieves photo
-```
+Open two PowerShell terminals in the project directory. Install the requirements above first. PostgreSQL must be running, and the `triscript` login and database must already exist.
 
-- **Go backend** is the single source of truth for sessions and photos. It stores everything in memory.
-- **Next.js** proxies all session and photo API calls to Go. It does not duplicate session state.
-- **Phone** talks only to the Next.js server (never directly to Go).
-
----
-
-## Prerequisites
-
-| Tool | Minimum version |
-|------|----------------|
-| Node.js | 18 LTS or later |
-| npm | 9 or later (comes with Node.js) |
-| Go | 1.21 or later |
-
----
-
-## Installation (Windows)
+### Backend terminal
 
 ```powershell
-# 1. Clone the repository
-git clone https://github.com/your-org/triscript.git
-cd triscript
-
-# 2. Install Node.js dependencies
-npm install
-
-# 3. Copy the environment template
-copy .env.example .env.local
+.\backend\run-lan.ps1
 ```
 
----
+The launcher securely prompts for the `triscript` PostgreSQL user's password when `DATABASE_URL` is not already set in that PowerShell process. Password entry is hidden. On startup, the backend creates the `letters` table if needed. If started directly with `go run .` and no `DATABASE_URL`, OCR still runs, but saving and listing return HTTP 503; no successful-save message is shown.
 
-## Environment variables
-
-Edit `.env.local` in the project root. Required:
-
-```dotenv
-# URL of the Go backend — used by Next.js server-side only, never exposed to the browser.
-GO_API_URL=http://localhost:8080
-
-# Address the PHONE can reach the Next.js server on.
-# Leave empty for the server to auto-detect from the LAN IP.
-# On a local network, set this to your computer's LAN IP, e.g. http://192.168.1.20:3000
-NEXT_PUBLIC_PUBLIC_URL=
-
-# Optional: URL of a TRISCRIPT reader (OCR) service.
-# POST multipart form (field "image", field "uiLang") → JSON { "fields": { ... } }
-# Leave empty to use the built-in DEMO reader, which returns invented TEST values.
-NEXT_PUBLIC_TRISCRIPT_READER_URL=
-
-# How long a pairing QR code lasts, in seconds (default 300 = 5 minutes).
-SESSION_TTL_SECONDS=300
-```
-
-`GO_API_URL` is a **server-side-only** variable (no `NEXT_PUBLIC_` prefix). It is never sent to the browser.
-
----
-
-## Running on Windows
-
-### 1. Start the Go backend
-
-Open a terminal in the `backend` directory:
+### Frontend terminal
 
 ```powershell
-cd backend
-go run .
-```
-
-You should see:
-```
-TRISCRIPT Go backend starting on http://localhost:8080 (session TTL: 5m0s)
-```
-
-Leave this terminal running.
-
-### 2. Start the Next.js frontend
-
-Open a second terminal in the project root:
-
-```powershell
+cd .\frontend
+npm ci
+$env:NEXT_PUBLIC_API_URL = "http://localhost:8080"
+$env:NEXT_PUBLIC_WEB_URL = "http://localhost:3000"
 npm run dev
 ```
 
-This starts Next.js on `http://localhost:3000` and binds to `0.0.0.0` (all interfaces), which allows the phone to connect on the same Wi-Fi.
+Open `http://localhost:3000` on the computer.
 
-Open **http://localhost:3000/demo** on the computer.
+### Use a phone on the same Wi-Fi
 
----
-
-## Phone QR pairing — local network setup
-
-For the phone to open the QR code link it must reach the computer. The phone and computer must be on the same Wi-Fi network.
-
-### Automatic (recommended)
-
-The server tries to detect the computer's LAN IP automatically. If the QR link shows a warning that it uses `localhost`, set the IP manually (see below).
-
-### Manual
-
-1. Find your computer's LAN IP address:
-   ```powershell
-   ipconfig
-   ```
-   Look for the `IPv4 Address` under your Wi-Fi adapter, e.g. `192.168.1.42`.
-
-2. Add it to `.env.local`:
-   ```dotenv
-   NEXT_PUBLIC_PUBLIC_URL=http://192.168.1.42:3000
-   ```
-
-3. Restart the Next.js dev server (`Ctrl+C`, then `npm run dev` again).
-
-The QR code will now contain `http://192.168.1.42:3000/capture/{id}`, which the phone can open.
-
-### Firewall
-
-Windows Firewall may block incoming connections on port 3000. If the phone cannot load the capture page:
-
-1. Open Windows Defender Firewall with Advanced Security.
-2. Add an **Inbound Rule**: TCP port 3000, allow for Domain and Private networks.
-
-Do **not** expose Go's port 8080 publicly. The phone only needs port 3000.
-
----
-
-## Go backend API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Returns `{"status":"ok"}` |
-| `POST` | `/api/session` | Create a session → `{"id":"…","expiresAt":…}` (201) |
-| `GET` | `/api/session/{id}` | Poll status → `{"status":"waiting"\|"photo","expiresAt":…}` (200) or `{"error":"gone"}` (404) |
-| `DELETE` | `/api/session/{id}` | Delete session and photo (204) |
-| `POST` | `/api/session/{id}/photo` | Upload photo (204); 404 gone, 409 duplicate, 413 too large, 415 bad type |
-| `GET` | `/api/session/{id}/photo` | Retrieve photo bytes (200) or 404 |
-
-All endpoints return `Cache-Control: no-store`.
-
-Configure session lifetime with `SESSION_TTL_SECONDS` (default 300 seconds).
-
----
-
-## OCR reader configuration
-
-`src/lib/reader.ts` is the single integration point.
-
-- **Demo mode (default):** when `NEXT_PUBLIC_TRISCRIPT_READER_URL` is empty, the demo reader returns invented TEST values after a 1.4-second delay. The review screen shows a prominent "Demo reader" notice.
-- **Real reader:** set `NEXT_PUBLIC_TRISCRIPT_READER_URL` to the URL of your OCR service. The service must accept `POST` multipart form data with fields `image` (the photo file) and `uiLang` (the UI language code: `en`, `si`, or `ta`). It must return JSON:
-  ```json
-  {
-    "fields": {
-      "subject":    { "value": "...", "confidence": 0.96 },
-      "myNumber":   { "value": "...", "confidence": 0.93 },
-      "yourNumber": { "value": "...", "confidence": 0.71 },
-      "date":       { "value": "...", "confidence": 0.90 },
-      "from":       { "value": "...", "confidence": 0.88 },
-      "to":         { "value": "...", "confidence": 0.82 },
-      "signedBy":   { "value": "...", "confidence": 0.38 },
-      "language":   { "value": "en",  "confidence": 0.97 },
-      "body":       { "value": "...", "confidence": 0.84 }
-    }
-  }
-  ```
-  Any field with confidence below 0.5 is cleared before display. The reader has a 30-second timeout.
-
-Do not send photos to third-party services without reviewing their data-handling policies.
-
----
-
-## Testing
-
-### Go backend
+The phone cannot connect to a `localhost` URL. Stop older TRISCRIPT servers with Ctrl+C in their own terminals, then use two new PowerShell terminals:
 
 ```powershell
+.\backend\run-lan.ps1
+```
+
+```powershell
+.\frontend\run-lan.ps1
+```
+
+Open the LAN URL printed by the frontend on the computer and scan its new QR code with the phone. Keep both terminals open. The scripts bind the frontend for LAN access and use the computer's active interface address. The phone loads the page and sends API requests through the frontend on port 3000; the backend stays on the computer at port 8080. The computer and phone must be on the same non-isolated network. If the computer's firewall blocks inbound port 3000, allow the frontend on the trusted private network only. Do not weaken firewall settings on an untrusted network.
+
+### Database setup on Windows
+
+Create a local database and login using the PostgreSQL administrator account available on your machine. The Windows LAN launcher prompts securely for the app user's password. For manual runs, set `DATABASE_URL` in the same PowerShell process that starts the backend. If `psql` is not on `PATH`, run it from your PostgreSQL `bin` directory. Do not put real passwords in source files or commit `.env` files.
+
+## Run on Linux
+
+Install Go, Node.js/npm, PostgreSQL, ImageMagick 7, and Tesseract with `eng`, `sin`, and `tam` trained data using your distribution's package manager. Confirm that `magick -version` and `tesseract --list-langs` show the required programs/languages. Start PostgreSQL and create the local database/login before starting TRISCRIPT.
+
+In the first terminal, from the repository root:
+
+```sh
 cd backend
-gofmt -l .           # should print nothing (no formatting issues)
-go vet ./...         # should print nothing
-go test ./...        # should print ok for both packages
-go test -v ./...     # verbose: see individual test names
+export DATABASE_URL='postgres://triscript:YOUR_URL_SAFE_PASSWORD@localhost:5432/triscript?sslmode=disable'
+export PUBLIC_URL='http://localhost:8080'
+export WEB_ORIGIN='http://localhost:3000'
+go run .
 ```
 
-Tests cover: health endpoint, session lifecycle (create/poll/upload/retrieve/delete), JPEG/PNG/WebP validation, oversized files, invalid magic bytes, expiration, duplicate upload, concurrent access.
+In the second terminal:
 
-### Next.js frontend
+```sh
+cd frontend
+npm ci
+export NEXT_PUBLIC_API_URL='http://localhost:8080'
+export NEXT_PUBLIC_WEB_URL='http://localhost:3000'
+npm run dev
+```
+
+Open `http://localhost:3000`. To use a phone, set `NEXT_PUBLIC_WEB_URL` to the computer's reachable LAN IPv4 on port 3000, set `NEXT_PUBLIC_API_URL` to that LAN address on port 8080 for the pairing URL, and set `TRISCRIPT_API_URL=http://localhost:8080` in the frontend process. Bind the backend to `:8080` and start Next.js with `-H 0.0.0.0`. Phone API requests are proxied through the frontend, so only port 3000 needs to be reachable from the phone. Restrict firewall access to the trusted LAN.
+
+## Docker Compose
+
+Docker and Docker Compose are optional. A Docker build needs access to package registries; once images are built, the services process requests locally and do not require internet access.
+
+1. Copy `.env.example` to `.env`.
+2. Replace `POSTGRES_PASSWORD` with a long random alphanumeric password. Keep the password URL-safe, or URL-encode it in the generated PostgreSQL connection string.
+3. For phone access, set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WEB_URL` in `.env` to the computer's LAN IPv4, for example `http://192.168.1.20:8080` and `http://192.168.1.20:3000`.
+4. Start the services:
 
 ```powershell
-npm run typecheck    # TypeScript type check (no output = pass)
-npm run lint         # ESLint (no output = pass)
-npm run build        # production build (must complete without errors)
+docker compose up --build -d
 ```
 
-### Manual end-to-end test procedure
+Use the equivalent command in a Linux terminal. Visit the frontend on port 3000. PostgreSQL's port is published only on the computer's loopback interface; confirmed records persist in the `triscript-data` Docker volume. The backend image includes Tesseract's English, Sinhala, and Tamil language packages plus ImageMagick 7. To stop the services without deleting saved data, run `docker compose down`; do not use `-v` unless you intend to delete the database volume.
 
-Requirements: one computer, one phone on the same Wi-Fi, a fictional test letter marked **TEST LETTER, NOT VALID**.
+## Using TRISCRIPT
 
-1. Start the Go backend: `cd backend; go run .`
-2. Start the frontend: `npm run dev`
-3. On the computer, open `http://localhost:3000/demo`
-4. Click "Show the code". A QR code appears with a countdown timer.
-5. On the phone, open the camera app and scan the QR code.
-   - If the phone cannot load the page, check the firewall and set `NEXT_PUBLIC_PUBLIC_URL`.
-6. The phone opens the capture page. Read the test-document notice.
-7. Tap "Take a photo" and photograph the fictional test letter.
-8. Check the preview. Tap "Use this photo".
-9. The phone shows "Done. Look at your computer."
-10. The computer detects the photo (within ~1.5 seconds) and shows the reading spinner.
-11. After ~1.4 seconds (demo reader), the review form appears with invented test values.
-12. The review screen shows "Demo reader: these values are invented test data".
-13. Check and correct any field. Tick "I have checked these details". Click "Save details".
-14. The computer shows "Saved. The details were saved and the photo was deleted."
+1. Open the frontend on the computer and choose the interface language.
+2. Scan the QR code using a phone on the same LAN. Photograph each page; choose **Add this page** for intermediate pages and **Finish letter with this page** on the final page. The final page is used for signature extraction.
+3. Wait for OCR, then edit every extracted field and inspect the confidence indicators. Low-confidence or undetected fields are left for a person to review; TRISCRIPT does not guess values.
+4. Choose **Confirm details**, review the summary, select the explicit confirmation checkbox, and then choose **Save confirmed form**. Until all confirmation steps are completed, no letter is inserted into PostgreSQL.
 
-> Manual tests above have **not** been executed by the automated agent — they require a physical phone and real Wi-Fi.
+The leave-application demo uses the same scanner with a different JSON layout at `/forms/leave-application`. Add a new form by placing a validated layout JSON file in `frontend/forms/`; its filename (without `.json`) must match its `id`. The layout lists existing field keys and localized message keys. This changes presentation and saved `formType`, not the OCR engine.
 
----
+## API
 
-## Pages
+- `POST /api/sessions` — create a five-minute phone pairing session (limited to 10 creations per client IP per minute).
+- `GET /api/sessions/{id}/events` — receive OCR progress/results over server-sent events.
+- `POST /api/sessions/{id}/photo?t=TOKEN` — upload one page, with a required per-session token and a 12 MiB request limit. Add `complete=false` for an intermediate page.
+- `POST /api/letters` — store editable fields only when the JSON body includes `confirmed: true` and a valid `formType`.
+- `GET /api/letters?limit=100` — list confirmed field records only; the maximum page size is 100.
+- `GET /healthz` — backend health check.
 
-| Route | Description |
-|-------|-------------|
-| `/` | Home: how it works, languages, privacy |
-| `/demo` | Scan a letter end to end |
-| `/register` | Reuse demo — shows `<ScanLetter />` in a second context |
-| `/capture/[sessionId]` | Phone capture page opened by the QR code |
-| `/about` | About TRISCRIPT |
+The API permits browser CORS requests only from the configured `WEB_ORIGIN`. Database endpoints return HTTP 503 when `DATABASE_URL` is not configured. Photos are never accepted as database fields or inserted into PostgreSQL.
 
-## Reusing the `<ScanLetter />` component
+## Tests and sample accuracy report
 
-```tsx
-import { ScanLetter } from "@/components/ScanLetter";
+From `backend` in PowerShell:
 
-<ScanLetter onConfirm={(values) => saveToMySystem(values)} />
+```powershell
+go test -count=1 ./...
+go vet ./...
 ```
 
-`onConfirm` is called only after the person ticks the confirmation checkbox and presses Save. `values` is a `FieldValues` object with `subject`, `myNumber`, `yourNumber`, `date`, `from`, `to`, `signedBy`, `language`, `body` — all strings, empty when not read with sufficient confidence.
+The image-quality tests use ImageMagick. PostgreSQL integration tests run only when `TEST_DATABASE_URL` is set and use invented `TEST` field values.
 
----
+To run the accuracy report against the included local sample set (the sample files are not included in this repository):
 
-## Production deployment
+```powershell
+.\backend\scripts\accuracy-report.ps1
+```
 
-1. Deploy the Go backend and the Next.js frontend separately.
-2. Set `GO_API_URL` in the Next.js server environment to the Go backend's internal URL.
-3. Set `NEXT_PUBLIC_PUBLIC_URL` to the public HTTPS URL of the Next.js frontend.
-4. Serve over **HTTPS** in production. The phone's camera requires a secure context on non-localhost origins.
-5. Add rate limiting on `POST /api/session` to prevent session flooding.
-6. Add CORS headers on the Go backend only if you need cross-origin access (not required in the default setup where Next.js proxies everything).
+The script prints each field and its OCR confidence for the English, Tamil, and Sinhala sample letters.
 
-### Multi-instance note
+## License and contributing
 
-In-memory sessions are **not shared between separate Go processes** and are **lost when the Go server restarts**. For multi-instance production deployment:
-
-- Use a shared session store (e.g., Redis with a TTL), or
-- Route all session requests to a single Go instance (sticky sessions / session affinity).
-
-Photo bytes are also in memory — each Go instance only has the photos for the sessions it created.
-
----
-
-## Known limitations
-
-- Session and photo data are in memory only. A Go restart loses all active sessions.
-- No rate limiting is implemented on the session creation endpoint.
-- The race detector (`go test -race`) requires CGO (GCC). On Windows without a GCC toolchain, the data-race flag is unavailable. The code is written to be concurrency-safe by design (all session mutations are behind a `sync.RWMutex` and `GetSession` returns a safe snapshot rather than a mutable pointer).
-- Automatic LAN IP detection may pick the wrong interface on machines with multiple network adapters. Use `NEXT_PUBLIC_PUBLIC_URL` to set the address explicitly.
-- The demo reader simulates a 1.4-second delay and returns invented test values. It never reads your photo.
-
----
-
-## Git and contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-
-Do not commit `.env.local`, secrets, or test images containing personal information.
-
----
-
-## Licence
-
-[Mozilla Public License 2.0](LICENSE).
-
----
-
-*Built in the open by the Eastern Province IT Volunteer Programme, Sri Lanka.*
+TRISCRIPT is licensed under the [Mozilla Public License 2.0](./LICENSE). See [CONTRIBUTING.md](./CONTRIBUTING.md), [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md), and the [English user guide](./docs/USER_GUIDE.md).
