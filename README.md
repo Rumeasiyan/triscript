@@ -105,11 +105,11 @@ Everyone is welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Co
 
 TRISCRIPT is being extended with document-management features found in [Paperless-ngx](https://docs.paperless-ngx.com/) that it does not have yet, while keeping its Sinhala/Tamil/English field extraction, phone capture, and confirm-before-save workflow. Everything in this section is **planned**; the behaviour described above is unchanged until each pull request is merged.
 
-| Area | Planned features | Branch |
+| Area | Planned features | Owner |
 |---|---|---|
-| Files and ingest | Optional saving of full original page images (default off), image viewer, PDF/computer upload, searchable archive PDF, document versions, archive serial numbers, consume folder, export/backup | `feature/safana-files-and-ingest` |
-| Search and automation | Full-text search (English, Sinhala, Tamil), saved views, dashboard statistics, inbox, suggestions and workflows, share links with expiry, email import | `feature/simha-search-and-automation` |
-| Organisation and security | Tags, correspondents, document types, custom fields, edit and trash, bulk edit, notes, users and permissions, two-factor authentication, audit history, API tokens | `feature/robeeta-organization-and-security` |
+| Files and ingest | Optional saving of full original page images (default off), image viewer, PDF/computer upload, searchable archive PDF, document versions, archive serial numbers, consume folder, export/backup | Safana |
+| Search and automation | Full-text search (English, Sinhala, Tamil), saved views, dashboard statistics, inbox, suggestions and workflows, share links with expiry, email import | Simha |
+| Organisation and security | Tags, correspondents, document types, custom fields, edit and trash, bulk edit, notes, users and permissions, two-factor authentication, audit history, API tokens | Robeeta |
 
 Planned changes to project rules, pending maintainer approval:
 
