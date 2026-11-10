@@ -136,6 +136,24 @@ To run the accuracy report against the included local sample set (the sample fil
 
 The script prints each field and its OCR confidence for the English, Tamil, and Sinhala sample letters.
 
+## Roadmap: Paperless-ngx feature parity (planned)
+
+TRISCRIPT is being extended with document-management features found in [Paperless-ngx](https://docs.paperless-ngx.com/) that it does not have yet, while keeping its Sinhala/Tamil/English field extraction, phone capture, and confirm-before-save workflow. Everything in this section is **planned**; the behaviour described above is unchanged until each pull request is merged.
+
+| Area | Planned features | Branch |
+|---|---|---|
+| Files and ingest | Optional saving of full original page images (default off), image viewer, PDF/computer upload, searchable archive PDF, document versions, archive serial numbers, consume folder, export/backup | `feature/safana-files-and-ingest` |
+| Search and automation | Full-text search (English, Sinhala, Tamil), saved views, dashboard statistics, inbox, suggestions and workflows, share links with expiry, email import | `feature/simha-search-and-automation` |
+| Organisation and security | Tags, correspondents, document types, custom fields, edit and trash, bulk edit, notes, users and permissions, two-factor authentication, audit history, API tokens | `feature/robeeta-organization-and-security` |
+
+Planned changes to project rules, pending maintainer approval:
+
+- Original photos would be stored **only when the person opts in** on the review screen. The default stays off, and photos would never be stored in PostgreSQL. Until this is merged, photos are still deleted after OCR as described in the Privacy section.
+- Suggestions from automation (tags, correspondents, workflows) must never save a record without explicit confirmation.
+- All processing stays on the local network: email import only reads the office's own mailbox, and single sign-on only supports a self-hosted OpenID provider.
+
+Work is tracked in GitHub issues. Each contributor works on their own branch created from `main` and opens one pull request per phase. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ## License and contributing
 
 TRISCRIPT is licensed under the [Mozilla Public License 2.0](./LICENSE). See [CONTRIBUTING.md](./CONTRIBUTING.md), [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md), and the [English user guide](./docs/USER_GUIDE.md).
