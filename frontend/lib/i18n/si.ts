@@ -118,6 +118,61 @@ const si: Record<keyof typeof en, string> = {
   requiredConfirmation: "සුරැකීමට පෙර පරීක්ෂා කළ තොරතුරු තහවුරු කළ යුතුය.",
   qrAlt: "දුරකථන ඡායාරූප පිටුව විවෘත කිරීමේ QR කේතය",
   progressLabel: "ලිපිය පරිලෝකනය කිරීමේ ප්‍රගතිය",
+
+  // Tags
+  tagsTitle: "ටැග",
+  tagsDescription: "සුරකින ලද ලිපි සංවිධානය කිරීමට ටැග සාදන්න සහ කළමනාකරණය කරන්න.",
+  tagName: "ටැගයේ නම",
+  tagColour: "වර්ණය",
+  addTag: "ටැගය එක් කරන්න",
+  editTag: "ටැගය සංස්කරණය කරන්න",
+  saveTag: "ටැගය සුරකින්න",
+  deleteTag: "ටැගය මකන්න",
+  confirmDeleteTag: "මෙම ටැගය මකන්නද? ටැගය සහිත ලිපි මකා නොදමනු ලැබේ.",
+  tagNameRequired: "ටැගයේ නම අවශ්‍ය වේ (උපරිම අක්ෂර 64).",
+  tagColourRequired: "වර්ණය #6366f1 ආකාරයෙන් 6-ඉලක්කම් hex අගයක් විය යුතුය.",
+  noTags: "ටැග නොමැත. ඉහළින් එකක් එක් කරන්න.",
+
+  // Correspondents
+  correspondentsTitle: "ලිපිකරුවෝ",
+  correspondentsDescription: "කාර්යාල සහ පුද්ගලයන් වැනි ලිපිකරුවන් සාදන්න සහ කළමනාකරණය කරන්න.",
+  correspondentName: "ලිපිකරුවාගේ නම",
+  addCorrespondent: "ලිපිකරුවෙකු එක් කරන්න",
+  editCorrespondent: "ලිපිකරුවා සංස්කරණය කරන්න",
+  saveCorrespondent: "ලිපිකරුවා සුරකින්න",
+  deleteCorrespondent: "ලිපිකරුවා මකන්න",
+  confirmDeleteCorrespondent: "මෙම ලිපිකරුවා මකන්නද? ඔවුන් සමඟ සම්බන්ධ ලිපි මකා නොදමනු ලැබේ.",
+  correspondentNameRequired: "ලිපිකරුවාගේ නම අවශ්‍ය වේ (උපරිම අක්ෂර 128).",
+  noCorrespondents: "ලිපිකරුවෝ නොමැත. ඉහළින් එකෙකු එක් කරන්න.",
+  suggestedCorrespondent: "From ක්ෂේත්‍රයෙන් යෝජනා කරන ලදී — සුරැකීමට පෙර කරුණාකර තහවුරු කරන්න.",
+
+  // Document types
+  documentTypesTitle: "ලේඛන වර්ග",
+  documentTypesDescription: "ඉඩම්, හදිසි හෝ චක්‍රලේඛ වැනි ලේඛන වර්ග සාදන්න සහ කළමනාකරණය කරන්න.",
+  documentTypeName: "ලේඛන වර්ගයේ නම",
+  addDocumentType: "ලේඛන වර්ගයක් එක් කරන්න",
+  editDocumentType: "ලේඛන වර්ගය සංස්කරණය කරන්න",
+  saveDocumentType: "ලේඛන වර්ගය සුරකින්න",
+  deleteDocumentType: "ලේඛන වර්ගය මකන්න",
+  confirmDeleteDocumentType: "මෙම ලේඛන වර්ගය මකන්නද? ඊට සම්බන්ධ ලිපි මකා නොදමනු ලැබේ.",
+  documentTypeNameRequired: "ලේඛන වර්ගයේ නම අවශ්‍ය වේ (උපරිම අක්ෂර 64).",
+  noDocumentTypes: "ලේඛන වර්ග නොමැත. ඉහළින් එකක් එක් කරන්න.",
+
+  // Letter metadata
+  lettersTitle: "සුරකින ලද ලිපි",
+  letterCorrespondent: "ලිපිකරු",
+  letterDocumentType: "ලේඛන වර්ගය",
+  letterTags: "ටැග",
+  filterByTag: "ටැගය අනුව පෙරහන් කරන්න",
+  filterByCorrespondent: "ලිපිකරු අනුව පෙරහන් කරන්න",
+  filterByDocumentType: "ලේඛන වර්ගය අනුව පෙරහන් කරන්න",
+  clearFilters: "පෙරහන් ඉවත් කරන්න",
+  editMetadata: "ටැග සහ metadata සංස්කරණය කරන්න",
+  saveMetadata: "Metadata සුරකින්න",
+  metadataSaved: "Metadata යාවත්කාලීන කරන ලදී.",
+  metadataFailed: "Metadata යාවත්කාලීන කළ නොහැකි විය. දත්තගබඩාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.",
+  noLetters: "වත්මන් පෙරහන් වලට ගැලපෙන සුරකින ලද ලිපි නොමැත.",
+  manageOrganisation: "සංවිධානය කළමනාකරණය",
 };
 
 export default si;

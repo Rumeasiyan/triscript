@@ -116,6 +116,61 @@ const en = {
   requiredConfirmation: "You must confirm the reviewed fields before saving.",
   qrAlt: "QR code to open the phone capture page",
   progressLabel: "Letter scanning progress",
+
+  // Tags
+  tagsTitle: "Tags",
+  tagsDescription: "Create and manage tags to organise saved letters.",
+  tagName: "Tag name",
+  tagColour: "Colour",
+  addTag: "Add tag",
+  editTag: "Edit tag",
+  saveTag: "Save tag",
+  deleteTag: "Delete tag",
+  confirmDeleteTag: "Delete this tag? Letters with this tag will not be deleted.",
+  tagNameRequired: "Tag name is required (max 64 characters).",
+  tagColourRequired: "Colour must be a 6-digit hex value such as #6366f1.",
+  noTags: "No tags yet. Add one above.",
+
+  // Correspondents
+  correspondentsTitle: "Correspondents",
+  correspondentsDescription: "Create and manage correspondents such as offices and individuals.",
+  correspondentName: "Correspondent name",
+  addCorrespondent: "Add correspondent",
+  editCorrespondent: "Edit correspondent",
+  saveCorrespondent: "Save correspondent",
+  deleteCorrespondent: "Delete correspondent",
+  confirmDeleteCorrespondent: "Delete this correspondent? Letters linked to them will not be deleted.",
+  correspondentNameRequired: "Correspondent name is required (max 128 characters).",
+  noCorrespondents: "No correspondents yet. Add one above.",
+  suggestedCorrespondent: "Suggested from the From field — please confirm before saving.",
+
+  // Document types
+  documentTypesTitle: "Document types",
+  documentTypesDescription: "Create and manage document types such as Land, Urgent or Circular.",
+  documentTypeName: "Document type name",
+  addDocumentType: "Add document type",
+  editDocumentType: "Edit document type",
+  saveDocumentType: "Save document type",
+  deleteDocumentType: "Delete document type",
+  confirmDeleteDocumentType: "Delete this document type? Letters linked to it will not be deleted.",
+  documentTypeNameRequired: "Document type name is required (max 64 characters).",
+  noDocumentTypes: "No document types yet. Add one above.",
+
+  // Letter metadata
+  lettersTitle: "Saved letters",
+  letterCorrespondent: "Correspondent",
+  letterDocumentType: "Document type",
+  letterTags: "Tags",
+  filterByTag: "Filter by tag",
+  filterByCorrespondent: "Filter by correspondent",
+  filterByDocumentType: "Filter by document type",
+  clearFilters: "Clear filters",
+  editMetadata: "Edit tags and metadata",
+  saveMetadata: "Save metadata",
+  metadataSaved: "Metadata updated.",
+  metadataFailed: "Could not update metadata. Check the database and retry.",
+  noLetters: "No saved letters match the current filters.",
+  manageOrganisation: "Manage organisation",
 } as const;
 
 export default en;

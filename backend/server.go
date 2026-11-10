@@ -39,6 +39,24 @@ const (
 type letterStore interface {
 	Save(context.Context, bool, string, map[string]ocr.Field) (storage.Letter, error)
 	List(context.Context, int) ([]storage.Letter, error)
+	Get(context.Context, int64) (storage.Letter, error)
+	Patch(context.Context, int64, storage.LetterPatch) (storage.Letter, error)
+
+	CreateTag(context.Context, string, string) (storage.Tag, error)
+	ListTags(context.Context) ([]storage.Tag, error)
+	UpdateTag(context.Context, int64, string, string) (storage.Tag, error)
+	DeleteTag(context.Context, int64) error
+
+	CreateCorrespondent(context.Context, string) (storage.Correspondent, error)
+	ListCorrespondents(context.Context) ([]storage.Correspondent, error)
+	UpdateCorrespondent(context.Context, int64, string) (storage.Correspondent, error)
+	DeleteCorrespondent(context.Context, int64) error
+	SuggestCorrespondent(context.Context, string) ([]storage.Correspondent, error)
+
+	CreateDocumentType(context.Context, string) (storage.DocumentType, error)
+	ListDocumentTypes(context.Context) ([]storage.DocumentType, error)
+	UpdateDocumentType(context.Context, int64, string) (storage.DocumentType, error)
+	DeleteDocumentType(context.Context, int64) error
 }
 
 type apiConfig struct {
@@ -90,6 +108,8 @@ func newAPIHandler(config apiConfig) http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	// ── Sessions ────────────────────────────────────────────────────────────
 
 	mux.HandleFunc("POST /api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.allow(clientAddress(r), time.Now()) {
@@ -286,6 +306,8 @@ func newAPIHandler(config apiConfig) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"page": pageCount, "complete": false})
 	})
 
+	// ── Letters ─────────────────────────────────────────────────────────────
+
 	mux.HandleFunc("POST /api/letters", func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
 			Confirmed *bool           `json:"confirmed"`
@@ -343,14 +365,408 @@ func newAPIHandler(config apiConfig) http.Handler {
 			}
 			limit = parsed
 		}
+
+		// Optional filters by tag, correspondent, document type.
+		tagFilter := parseIntList(r.URL.Query().Get("tag"))
+		correspondentFilter := parseOptionalInt(r.URL.Query().Get("correspondent"))
+		docTypeFilter := parseOptionalInt(r.URL.Query().Get("documentType"))
+
 		letters, err := config.letters.List(r.Context(), limit)
 		if err != nil {
 			log.Printf("list confirmed letters: %v", err)
 			http.Error(w, "could not list confirmed letters", http.StatusInternalServerError)
 			return
 		}
+
+		// Apply in-memory filters (simple; full-text search is Issue C).
+		if len(tagFilter) > 0 || correspondentFilter != nil || docTypeFilter != nil {
+			letters = filterLetters(letters, tagFilter, correspondentFilter, docTypeFilter)
+		}
+
 		writeJSON(w, http.StatusOK, letters)
 	})
+
+	// PATCH /api/letters/{id} — edit metadata of a saved confirmed letter.
+	mux.HandleFunc("PATCH /api/letters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		letterID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || letterID < 1 {
+			http.Error(w, "letter id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+
+		var payload struct {
+			FormType        *string  `json:"formType"`
+			Fields          json.RawMessage `json:"fields"`
+			CorrespondentID *int64   `json:"correspondentId"`
+			DocumentTypeID  *int64   `json:"documentTypeId"`
+			TagIDs          []int64  `json:"tagIds"`
+			ClearCorrespondent bool  `json:"clearCorrespondent"`
+			ClearDocumentType  bool  `json:"clearDocumentType"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid patch request", http.StatusBadRequest)
+			return
+		}
+
+		patch := storage.LetterPatch{
+			CorrespondentID:    payload.CorrespondentID,
+			DocumentTypeID:     payload.DocumentTypeID,
+			TagIDs:             payload.TagIDs,
+			ClearCorrespondent: payload.ClearCorrespondent,
+			ClearDocumentType:  payload.ClearDocumentType,
+		}
+		if payload.FormType != nil {
+			if !validFormType(*payload.FormType) {
+				http.Error(w, "formType is invalid", http.StatusBadRequest)
+				return
+			}
+			patch.FormType = payload.FormType
+		}
+		if payload.Fields != nil {
+			fields, err := decodeFields(payload.Fields)
+			if err != nil {
+				http.Error(w, "letter fields are invalid", http.StatusBadRequest)
+				return
+			}
+			patch.Fields = fields
+		}
+
+		letter, err := config.letters.Patch(r.Context(), letterID, patch)
+		if errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "letter not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("patch letter %d: %v", letterID, err)
+			http.Error(w, "could not update letter", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, letter)
+	})
+
+	// ── Tags ────────────────────────────────────────────────────────────────
+
+	mux.HandleFunc("GET /api/tags", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		tags, err := config.letters.ListTags(r.Context())
+		if err != nil {
+			log.Printf("list tags: %v", err)
+			http.Error(w, "could not list tags", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, tags)
+	})
+
+	mux.HandleFunc("POST /api/tags", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		var payload struct {
+			Name   string `json:"name"`
+			Colour string `json:"colour"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid tag request", http.StatusBadRequest)
+			return
+		}
+		if err := validateTagName(payload.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if payload.Colour == "" {
+			payload.Colour = "#6366f1"
+		}
+		if !validColour(payload.Colour) {
+			http.Error(w, "colour must be a 6-digit hex colour such as #6366f1", http.StatusBadRequest)
+			return
+		}
+		tag, err := config.letters.CreateTag(r.Context(), payload.Name, payload.Colour)
+		if err != nil {
+			log.Printf("create tag: %v", err)
+			http.Error(w, "could not create tag", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusCreated, tag)
+	})
+
+	mux.HandleFunc("PUT /api/tags/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		tagID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || tagID < 1 {
+			http.Error(w, "tag id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		var payload struct {
+			Name   string `json:"name"`
+			Colour string `json:"colour"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid tag request", http.StatusBadRequest)
+			return
+		}
+		if err := validateTagName(payload.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if !validColour(payload.Colour) {
+			http.Error(w, "colour must be a 6-digit hex colour such as #6366f1", http.StatusBadRequest)
+			return
+		}
+		tag, err := config.letters.UpdateTag(r.Context(), tagID, payload.Name, payload.Colour)
+		if errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "tag not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("update tag %d: %v", tagID, err)
+			http.Error(w, "could not update tag", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, tag)
+	})
+
+	mux.HandleFunc("DELETE /api/tags/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		tagID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || tagID < 1 {
+			http.Error(w, "tag id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		if err := config.letters.DeleteTag(r.Context(), tagID); errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "tag not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			log.Printf("delete tag %d: %v", tagID, err)
+			http.Error(w, "could not delete tag", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// ── Correspondents ──────────────────────────────────────────────────────
+
+	mux.HandleFunc("GET /api/correspondents", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		if q := r.URL.Query().Get("suggest"); q != "" {
+			items, err := config.letters.SuggestCorrespondent(r.Context(), q)
+			if err != nil {
+				log.Printf("suggest correspondents: %v", err)
+				http.Error(w, "could not suggest correspondents", http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, items)
+			return
+		}
+		items, err := config.letters.ListCorrespondents(r.Context())
+		if err != nil {
+			log.Printf("list correspondents: %v", err)
+			http.Error(w, "could not list correspondents", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	})
+
+	mux.HandleFunc("POST /api/correspondents", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		var payload struct {
+			Name string `json:"name"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid correspondent request", http.StatusBadRequest)
+			return
+		}
+		if err := validateCorrespondentName(payload.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item, err := config.letters.CreateCorrespondent(r.Context(), payload.Name)
+		if err != nil {
+			log.Printf("create correspondent: %v", err)
+			http.Error(w, "could not create correspondent", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusCreated, item)
+	})
+
+	mux.HandleFunc("PUT /api/correspondents/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		cid, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || cid < 1 {
+			http.Error(w, "correspondent id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		var payload struct {
+			Name string `json:"name"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid correspondent request", http.StatusBadRequest)
+			return
+		}
+		if err := validateCorrespondentName(payload.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item, err := config.letters.UpdateCorrespondent(r.Context(), cid, payload.Name)
+		if errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "correspondent not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("update correspondent %d: %v", cid, err)
+			http.Error(w, "could not update correspondent", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	})
+
+	mux.HandleFunc("DELETE /api/correspondents/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		cid, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || cid < 1 {
+			http.Error(w, "correspondent id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		if err := config.letters.DeleteCorrespondent(r.Context(), cid); errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "correspondent not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			log.Printf("delete correspondent %d: %v", cid, err)
+			http.Error(w, "could not delete correspondent", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// ── Document types ───────────────────────────────────────────────────────
+
+	mux.HandleFunc("GET /api/document-types", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		items, err := config.letters.ListDocumentTypes(r.Context())
+		if err != nil {
+			log.Printf("list document types: %v", err)
+			http.Error(w, "could not list document types", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	})
+
+	mux.HandleFunc("POST /api/document-types", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		var payload struct {
+			Name string `json:"name"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid document type request", http.StatusBadRequest)
+			return
+		}
+		if err := validateDocumentTypeName(payload.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item, err := config.letters.CreateDocumentType(r.Context(), payload.Name)
+		if err != nil {
+			log.Printf("create document type: %v", err)
+			http.Error(w, "could not create document type", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusCreated, item)
+	})
+
+	mux.HandleFunc("PUT /api/document-types/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		did, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || did < 1 {
+			http.Error(w, "document type id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		var payload struct {
+			Name string `json:"name"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid document type request", http.StatusBadRequest)
+			return
+		}
+		if err := validateDocumentTypeName(payload.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item, err := config.letters.UpdateDocumentType(r.Context(), did, payload.Name)
+		if errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "document type not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("update document type %d: %v", did, err)
+			http.Error(w, "could not update document type", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	})
+
+	mux.HandleFunc("DELETE /api/document-types/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		did, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || did < 1 {
+			http.Error(w, "document type id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		if err := config.letters.DeleteDocumentType(r.Context(), did); errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "document type not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			log.Printf("delete document type %d: %v", did, err)
+			http.Error(w, "could not delete document type", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// ── Phone capture page ───────────────────────────────────────────────────
 
 	mux.HandleFunc("GET /m/{id}", func(w http.ResponseWriter, r *http.Request) {
 		content, err := phonePages.ReadFile("web/phone.html")
@@ -365,6 +781,8 @@ func newAPIHandler(config apiConfig) http.Handler {
 	return corsMiddleware(config.webOrigin, mux)
 }
 
+// ─── CORS middleware ──────────────────────────────────────────────────────────
+
 func corsMiddleware(allowedOrigin string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
@@ -377,7 +795,7 @@ func corsMiddleware(allowedOrigin string, next http.Handler) http.Handler {
 			w.Header().Add("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -386,11 +804,39 @@ func corsMiddleware(allowedOrigin string, next http.Handler) http.Handler {
 	})
 }
 
+// ─── Validation helpers ───────────────────────────────────────────────────────
+
 var formTypePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 var fieldNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,63}$`)
+var colourPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 func validFormType(formType string) bool {
 	return formTypePattern.MatchString(formType)
+}
+
+func validColour(colour string) bool {
+	return colourPattern.MatchString(colour)
+}
+
+func validateTagName(name string) error {
+	if len(name) < 1 || len(name) > 64 {
+		return fmt.Errorf("tag name must be between 1 and 64 characters")
+	}
+	return nil
+}
+
+func validateCorrespondentName(name string) error {
+	if len(name) < 1 || len(name) > 128 {
+		return fmt.Errorf("correspondent name must be between 1 and 128 characters")
+	}
+	return nil
+}
+
+func validateDocumentTypeName(name string) error {
+	if len(name) < 1 || len(name) > 64 {
+		return fmt.Errorf("document type name must be between 1 and 64 characters")
+	}
+	return nil
 }
 
 func decodeFields(raw json.RawMessage) (map[string]ocr.Field, error) {
@@ -455,6 +901,66 @@ func isImageBytes(data []byte) bool {
 		bytes.HasPrefix(data, []byte("GIF89a")) ||
 		(len(data) >= 12 && bytes.Equal(data[:4], []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WEBP")))
 }
+
+// ─── Filter helpers ───────────────────────────────────────────────────────────
+
+func filterLetters(letters []storage.Letter, tagIDs []int64, correspondentID *int64, docTypeID *int64) []storage.Letter {
+	out := make([]storage.Letter, 0, len(letters))
+	for _, l := range letters {
+		if correspondentID != nil && (l.CorrespondentID == nil || *l.CorrespondentID != *correspondentID) {
+			continue
+		}
+		if docTypeID != nil && (l.DocumentTypeID == nil || *l.DocumentTypeID != *docTypeID) {
+			continue
+		}
+		if len(tagIDs) > 0 {
+			tagSet := make(map[int64]struct{}, len(l.Tags))
+			for _, t := range l.Tags {
+				tagSet[t.ID] = struct{}{}
+			}
+			match := true
+			for _, required := range tagIDs {
+				if _, ok := tagSet[required]; !ok {
+					match = false
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+func parseIntList(s string) []int64 {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		v, err := strconv.ParseInt(strings.TrimSpace(p), 10, 64)
+		if err == nil && v > 0 {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+func parseOptionalInt(s string) *int64 {
+	if s == "" {
+		return nil
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || v < 1 {
+		return nil
+	}
+	return &v
+}
+
+// ─── Misc helpers ─────────────────────────────────────────────────────────────
 
 func publishUploadError(s *session.Session, code string) {
 	s.Publish(session.Event{Type: "error", Data: code})

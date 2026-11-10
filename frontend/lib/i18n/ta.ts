@@ -118,6 +118,61 @@ const ta: Record<keyof typeof en, string> = {
   requiredConfirmation: "சேமிப்பதற்கு முன் சரிபார்க்கப்பட்ட புலங்களை உறுதிசெய்ய வேண்டும்.",
   qrAlt: "தொலைபேசி புகைப்படப் பக்கத்தைத் திறக்கும் QR குறியீடு",
   progressLabel: "கடித ஸ்கேன் முன்னேற்றம்",
+
+  // Tags
+  tagsTitle: "குறிச்சொற்கள்",
+  tagsDescription: "சேமிக்கப்பட்ட கடிதங்களை ஒழுங்கமைக்க குறிச்சொற்களை உருவாக்கி நிர்வகிக்கவும்.",
+  tagName: "குறிச்சொல் பெயர்",
+  tagColour: "நிறம்",
+  addTag: "குறிச்சொல் சேர்க்கவும்",
+  editTag: "குறிச்சொல்லை திருத்தவும்",
+  saveTag: "குறிச்சொல்லை சேமிக்கவும்",
+  deleteTag: "குறிச்சொல்லை நீக்கவும்",
+  confirmDeleteTag: "இந்த குறிச்சொல்லை நீக்கவா? இந்த குறிச்சொல் உள்ள கடிதங்கள் நீக்கப்படாது.",
+  tagNameRequired: "குறிச்சொல் பெயர் தேவை (அதிகபட்சம் 64 எழுத்துக்கள்).",
+  tagColourRequired: "நிறம் #6366f1 போன்ற 6-இலக்க hex மதிப்பாக இருக்க வேண்டும்.",
+  noTags: "குறிச்சொற்கள் இல்லை. மேலே ஒன்றை சேர்க்கவும்.",
+
+  // Correspondents
+  correspondentsTitle: "நிருபர்கள்",
+  correspondentsDescription: "அலுவலகங்கள் மற்றும் தனிநபர்கள் போன்ற நிருபர்களை உருவாக்கி நிர்வகிக்கவும்.",
+  correspondentName: "நிருபர் பெயர்",
+  addCorrespondent: "நிருபர் சேர்க்கவும்",
+  editCorrespondent: "நிருபரை திருத்தவும்",
+  saveCorrespondent: "நிருபரை சேமிக்கவும்",
+  deleteCorrespondent: "நிருபரை நீக்கவும்",
+  confirmDeleteCorrespondent: "இந்த நிருபரை நீக்கவா? அவர்களுடன் இணைக்கப்பட்ட கடிதங்கள் நீக்கப்படாது.",
+  correspondentNameRequired: "நிருபர் பெயர் தேவை (அதிகபட்சம் 128 எழுத்துக்கள்).",
+  noCorrespondents: "நிருபர்கள் இல்லை. மேலே ஒருவரை சேர்க்கவும்.",
+  suggestedCorrespondent: "From புலத்திலிருந்து பரிந்துரைக்கப்பட்டது — சேமிப்பதற்கு முன் உறுதிசெய்யவும்.",
+
+  // Document types
+  documentTypesTitle: "ஆவண வகைகள்",
+  documentTypesDescription: "நிலம், அவசரம் அல்லது சுற்றறிக்கை போன்ற ஆவண வகைகளை உருவாக்கி நிர்வகிக்கவும்.",
+  documentTypeName: "ஆவண வகை பெயர்",
+  addDocumentType: "ஆவண வகை சேர்க்கவும்",
+  editDocumentType: "ஆவண வகையை திருத்தவும்",
+  saveDocumentType: "ஆவண வகையை சேமிக்கவும்",
+  deleteDocumentType: "ஆவண வகையை நீக்கவும்",
+  confirmDeleteDocumentType: "இந்த ஆவண வகையை நீக்கவா? அதனுடன் இணைக்கப்பட்ட கடிதங்கள் நீக்கப்படாது.",
+  documentTypeNameRequired: "ஆவண வகை பெயர் தேவை (அதிகபட்சம் 64 எழுத்துக்கள்).",
+  noDocumentTypes: "ஆவண வகைகள் இல்லை. மேலே ஒன்றை சேர்க்கவும்.",
+
+  // Letter metadata
+  lettersTitle: "சேமிக்கப்பட்ட கடிதங்கள்",
+  letterCorrespondent: "நிருபர்",
+  letterDocumentType: "ஆவண வகை",
+  letterTags: "குறிச்சொற்கள்",
+  filterByTag: "குறிச்சொல்லால் வடிகட்டவும்",
+  filterByCorrespondent: "நிருபரால் வடிகட்டவும்",
+  filterByDocumentType: "ஆவண வகையால் வடிகட்டவும்",
+  clearFilters: "வடிகட்டிகளை அழிக்கவும்",
+  editMetadata: "குறிச்சொற்கள் மற்றும் metadata திருத்தவும்",
+  saveMetadata: "Metadata சேமிக்கவும்",
+  metadataSaved: "Metadata புதுப்பிக்கப்பட்டது.",
+  metadataFailed: "Metadata புதுப்பிக்க முடியவில்லை. தரவுத்தளத்தை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  noLetters: "தற்போதைய வடிகட்டிகளுக்கு பொருந்தும் சேமிக்கப்பட்ட கடிதங்கள் இல்லை.",
+  manageOrganisation: "ஒழுங்கமைப்பை நிர்வகிக்கவும்",
 };
 
 export default ta;

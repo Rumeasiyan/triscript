@@ -78,7 +78,7 @@ func TestSessionCreationIsRateLimitedAndCorsIsRestricted(t *testing.T) {
 }
 
 func TestConfirmedLettersRequireExplicitConfirmationAndListOnlySavedRecords(t *testing.T) {
-	store := &memoryLetters{}
+	store := &memoryMetaStore{}
 	handler := newAPIHandler(apiConfig{
 		store: session.NewStore(time.Minute), letters: store,
 		publicURL: "http://localhost:8080", webOrigin: "http://localhost:3000",
@@ -216,4 +216,404 @@ func equalStrings(left, right []string) bool {
 		}
 	}
 	return true
+}
+
+// ─── Metadata store for server tests ─────────────────────────────────────────
+
+type memoryMetaStore struct {
+	memoryLetters
+	tags          []storage.Tag
+	correspondents []storage.Correspondent
+	docTypes      []storage.DocumentType
+}
+
+func (m *memoryMetaStore) Get(_ context.Context, id int64) (storage.Letter, error) {
+	for _, l := range m.saved {
+		if l.ID == id {
+			return l, nil
+		}
+	}
+	return storage.Letter{}, storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) Patch(_ context.Context, id int64, patch storage.LetterPatch) (storage.Letter, error) {
+	for i, l := range m.saved {
+		if l.ID == id {
+			if patch.FormType != nil {
+				m.saved[i].FormType = *patch.FormType
+			}
+			return m.saved[i], nil
+		}
+	}
+	return storage.Letter{}, storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) CreateTag(_ context.Context, name, colour string) (storage.Tag, error) {
+	tag := storage.Tag{ID: int64(len(m.tags) + 1), Name: name, Colour: colour}
+	m.tags = append(m.tags, tag)
+	return tag, nil
+}
+
+func (m *memoryMetaStore) ListTags(_ context.Context) ([]storage.Tag, error) {
+	return m.tags, nil
+}
+
+func (m *memoryMetaStore) UpdateTag(_ context.Context, id int64, name, colour string) (storage.Tag, error) {
+	for i, t := range m.tags {
+		if t.ID == id {
+			m.tags[i].Name = name
+			m.tags[i].Colour = colour
+			return m.tags[i], nil
+		}
+	}
+	return storage.Tag{}, storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) DeleteTag(_ context.Context, id int64) error {
+	for i, t := range m.tags {
+		if t.ID == id {
+			m.tags = append(m.tags[:i], m.tags[i+1:]...)
+			return nil
+		}
+	}
+	return storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) CreateCorrespondent(_ context.Context, name string) (storage.Correspondent, error) {
+	c := storage.Correspondent{ID: int64(len(m.correspondents) + 1), Name: name}
+	m.correspondents = append(m.correspondents, c)
+	return c, nil
+}
+
+func (m *memoryMetaStore) ListCorrespondents(_ context.Context) ([]storage.Correspondent, error) {
+	return m.correspondents, nil
+}
+
+func (m *memoryMetaStore) UpdateCorrespondent(_ context.Context, id int64, name string) (storage.Correspondent, error) {
+	for i, c := range m.correspondents {
+		if c.ID == id {
+			m.correspondents[i].Name = name
+			return m.correspondents[i], nil
+		}
+	}
+	return storage.Correspondent{}, storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) DeleteCorrespondent(_ context.Context, id int64) error {
+	for i, c := range m.correspondents {
+		if c.ID == id {
+			m.correspondents = append(m.correspondents[:i], m.correspondents[i+1:]...)
+			return nil
+		}
+	}
+	return storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) SuggestCorrespondent(_ context.Context, q string) ([]storage.Correspondent, error) {
+	var result []storage.Correspondent
+	for _, c := range m.correspondents {
+		if strings.Contains(strings.ToLower(c.Name), strings.ToLower(q)) {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
+
+func (m *memoryMetaStore) CreateDocumentType(_ context.Context, name string) (storage.DocumentType, error) {
+	dt := storage.DocumentType{ID: int64(len(m.docTypes) + 1), Name: name}
+	m.docTypes = append(m.docTypes, dt)
+	return dt, nil
+}
+
+func (m *memoryMetaStore) ListDocumentTypes(_ context.Context) ([]storage.DocumentType, error) {
+	return m.docTypes, nil
+}
+
+func (m *memoryMetaStore) UpdateDocumentType(_ context.Context, id int64, name string) (storage.DocumentType, error) {
+	for i, d := range m.docTypes {
+		if d.ID == id {
+			m.docTypes[i].Name = name
+			return m.docTypes[i], nil
+		}
+	}
+	return storage.DocumentType{}, storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) DeleteDocumentType(_ context.Context, id int64) error {
+	for i, d := range m.docTypes {
+		if d.ID == id {
+			m.docTypes = append(m.docTypes[:i], m.docTypes[i+1:]...)
+			return nil
+		}
+	}
+	return storage.ErrNotFound
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+func TestTagEndpoints(t *testing.T) {
+	store := &memoryMetaStore{}
+	handler := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), letters: store,
+		publicURL: "http://localhost:8080", webOrigin: "http://localhost:3000",
+	})
+
+	// POST /api/tags — missing database handled by missing store (covered below)
+
+	// POST /api/tags — invalid colour
+	request := httptest.NewRequest(http.MethodPost, "/api/tags",
+		strings.NewReader(`{"name":"TEST Urgent","colour":"notacolour"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid colour: status=%d", response.Code)
+	}
+
+	// POST /api/tags — valid
+	request = httptest.NewRequest(http.MethodPost, "/api/tags",
+		strings.NewReader(`{"name":"TEST Urgent","colour":"#ff0000"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create tag: status=%d body=%s", response.Code, response.Body.String())
+	}
+	var created storage.Tag
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil || created.ID < 1 {
+		t.Fatalf("create tag response invalid: %v", err)
+	}
+
+	// GET /api/tags
+	request = httptest.NewRequest(http.MethodGet, "/api/tags", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "TEST Urgent") {
+		t.Fatalf("list tags: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// PUT /api/tags/{id}
+	request = httptest.NewRequest(http.MethodPut, "/api/tags/1",
+		strings.NewReader(`{"name":"TEST Land","colour":"#00ff00"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "TEST Land") {
+		t.Fatalf("update tag: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// DELETE /api/tags/{id}
+	request = httptest.NewRequest(http.MethodDelete, "/api/tags/1", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete tag: status=%d", response.Code)
+	}
+
+	// DELETE /api/tags/{id} — not found
+	request = httptest.NewRequest(http.MethodDelete, "/api/tags/1", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("delete missing tag: status=%d want 404", response.Code)
+	}
+}
+
+func TestCorrespondentEndpoints(t *testing.T) {
+	store := &memoryMetaStore{}
+	handler := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), letters: store,
+		publicURL: "http://localhost:8080", webOrigin: "http://localhost:3000",
+	})
+
+	// POST — empty name
+	request := httptest.NewRequest(http.MethodPost, "/api/correspondents",
+		strings.NewReader(`{"name":""}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("empty correspondent name: status=%d", response.Code)
+	}
+
+	// POST — valid
+	request = httptest.NewRequest(http.MethodPost, "/api/correspondents",
+		strings.NewReader(`{"name":"TEST Divisional Secretariat"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create correspondent: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// GET — list
+	request = httptest.NewRequest(http.MethodGet, "/api/correspondents", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "TEST Divisional Secretariat") {
+		t.Fatalf("list correspondents: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// GET — suggest
+	request = httptest.NewRequest(http.MethodGet, "/api/correspondents?suggest=Divisional", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Divisional") {
+		t.Fatalf("suggest correspondents: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// PUT
+	request = httptest.NewRequest(http.MethodPut, "/api/correspondents/1",
+		strings.NewReader(`{"name":"TEST Updated Secretariat"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "TEST Updated Secretariat") {
+		t.Fatalf("update correspondent: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// DELETE
+	request = httptest.NewRequest(http.MethodDelete, "/api/correspondents/1", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete correspondent: status=%d", response.Code)
+	}
+}
+
+func TestDocumentTypeEndpoints(t *testing.T) {
+	store := &memoryMetaStore{}
+	handler := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), letters: store,
+		publicURL: "http://localhost:8080", webOrigin: "http://localhost:3000",
+	})
+
+	// POST — valid
+	request := httptest.NewRequest(http.MethodPost, "/api/document-types",
+		strings.NewReader(`{"name":"TEST Circular"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create document type: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// GET — list
+	request = httptest.NewRequest(http.MethodGet, "/api/document-types", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "TEST Circular") {
+		t.Fatalf("list document types: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// PUT
+	request = httptest.NewRequest(http.MethodPut, "/api/document-types/1",
+		strings.NewReader(`{"name":"TEST Internal Memo"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "TEST Internal Memo") {
+		t.Fatalf("update document type: status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	// DELETE
+	request = httptest.NewRequest(http.MethodDelete, "/api/document-types/1", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete document type: status=%d", response.Code)
+	}
+
+	// DELETE — not found
+	request = httptest.NewRequest(http.MethodDelete, "/api/document-types/1", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("delete missing doc type: status=%d want 404", response.Code)
+	}
+}
+
+func TestPatchLetterEndpoint(t *testing.T) {
+	store := &memoryMetaStore{}
+	handler := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), letters: store,
+		publicURL: "http://localhost:8080", webOrigin: "http://localhost:3000",
+	})
+
+	// Save a letter first
+	body, _ := json.Marshal(map[string]any{
+		"confirmed": true, "formType": "letter",
+		"fields": map[string]any{"subject": map[string]any{"value": "TEST PATCH LETTER", "confidence": 90}},
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/letters", bytes.NewReader(body))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("setup letter: status=%d", response.Code)
+	}
+	var saved storage.Letter
+	if err := json.NewDecoder(response.Body).Decode(&saved); err != nil {
+		t.Fatalf("decode saved letter: %v", err)
+	}
+
+	// PATCH — change formType
+	patchBody := strings.NewReader(`{"formType":"leave-application"}`)
+	request = httptest.NewRequest(http.MethodPatch, "/api/letters/1", patchBody)
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("patch letter: status=%d body=%s", response.Code, response.Body.String())
+	}
+	var patched storage.Letter
+	if err := json.NewDecoder(response.Body).Decode(&patched); err != nil {
+		t.Fatalf("decode patched letter: %v", err)
+	}
+	if patched.FormType != "leave-application" {
+		t.Fatalf("expected formType leave-application, got %q", patched.FormType)
+	}
+
+	// PATCH — not found
+	request = httptest.NewRequest(http.MethodPatch, "/api/letters/999",
+		strings.NewReader(`{"formType":"letter"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("patch missing letter: status=%d want 404", response.Code)
+	}
+
+	// PATCH — missing database
+	handlerNoDB := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), publicURL: "http://localhost:8080",
+		webOrigin: "http://localhost:3000",
+	})
+	request = httptest.NewRequest(http.MethodPatch, "/api/letters/1",
+		strings.NewReader(`{"formType":"letter"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handlerNoDB.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("patch without db: status=%d want 503", response.Code)
+	}
+}
+
+func TestMetadataEndpointsReturnServiceUnavailableWithoutDatabase(t *testing.T) {
+	handler := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), publicURL: "http://localhost:8080",
+		webOrigin: "http://localhost:3000",
+	})
+	for _, endpoint := range []string{
+		"/api/tags", "/api/correspondents", "/api/document-types",
+	} {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			request := httptest.NewRequest(method, endpoint, strings.NewReader(`{}`))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusServiceUnavailable {
+				t.Errorf("%s %s: status=%d want 503", method, endpoint, response.Code)
+			}
+		}
+	}
 }
