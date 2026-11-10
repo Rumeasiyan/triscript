@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +41,10 @@ const (
 type letterStore interface {
 	Save(context.Context, bool, string, map[string]ocr.Field) (storage.Letter, error)
 	List(context.Context, int) ([]storage.Letter, error)
+	SavePageFiles(context.Context, int64, []storage.SavePageFileParams) ([]storage.LetterFile, error)
+	ListPageFiles(context.Context, int64) ([]storage.LetterFile, error)
+	GetPageFilePath(context.Context, int64, int) (string, string, error)
+	DeletePageFiles(context.Context, int64) ([]string, error)
 }
 
 type apiConfig struct {
@@ -46,6 +52,7 @@ type apiConfig struct {
 	letters   letterStore
 	publicURL string
 	webOrigin string
+	filesDir  string // directory where opt-in page images are permanently stored
 }
 
 type rateLimiter struct {
@@ -209,9 +216,13 @@ func newAPIHandler(config apiConfig) http.Handler {
 			http.Error(w, "could not create a temporary upload directory", http.StatusInternalServerError)
 			return
 		}
+		// keepDir tracks whether the session has taken ownership of the directory.
+		keepDir := false
 		defer func() {
-			if err := os.RemoveAll(directory); err != nil {
-				log.Printf("remove OCR temporary directory %q: %v", directory, err)
+			if !keepDir {
+				if err := os.RemoveAll(directory); err != nil {
+					log.Printf("remove OCR temporary directory %q: %v", directory, err)
+				}
 			}
 		}()
 		input, err := os.CreateTemp(directory, "photo-*")
@@ -276,6 +287,14 @@ func newAPIHandler(config apiConfig) http.Handler {
 			return
 		}
 		pageAdded = true
+
+		// Keep the processed image in the session so the confirm handler can
+		// move it to permanent storage if the user opts in. Session takes ownership.
+		if config.filesDir != "" {
+			s.AddPageImage(session.PageImage{Dir: directory, Path: processedPath})
+			keepDir = true
+		}
+
 		if complete {
 			result := ocr.ExtractPages(pages)
 			s.Publish(session.Event{Type: "result", Data: result})
@@ -288,9 +307,11 @@ func newAPIHandler(config apiConfig) http.Handler {
 
 	mux.HandleFunc("POST /api/letters", func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
-			Confirmed *bool           `json:"confirmed"`
-			FormType  string          `json:"formType"`
-			Fields    json.RawMessage `json:"fields"`
+			Confirmed  *bool           `json:"confirmed"`
+			FormType   string          `json:"formType"`
+			Fields     json.RawMessage `json:"fields"`
+			SessionID  string          `json:"sessionId"`
+			KeepImages *bool           `json:"keepImages"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
 		decoder := json.NewDecoder(r.Body)
@@ -320,12 +341,36 @@ func newAPIHandler(config apiConfig) http.Handler {
 			http.Error(w, "letter database is not configured; nothing was saved", http.StatusServiceUnavailable)
 			return
 		}
+
+		// Resolve the session to optionally take its page images.
+		var sess *session.Session
+		if payload.SessionID != "" {
+			sess = config.store.Get(payload.SessionID, "")
+		}
+
 		letter, err := config.letters.Save(r.Context(), true, payload.FormType, fields)
 		if err != nil {
 			log.Printf("save confirmed letter: %v", err)
+			if sess != nil {
+				sess.DeletePageImages()
+			}
 			http.Error(w, "could not save confirmed letter", http.StatusInternalServerError)
 			return
 		}
+
+		keepImages := payload.KeepImages != nil && *payload.KeepImages
+		if keepImages && sess != nil && config.filesDir != "" {
+			imgs := sess.TakePageImages()
+			if len(imgs) > 0 {
+				if saveErr := savePageImages(r.Context(), config, letter.ID, imgs); saveErr != nil {
+					log.Printf("save page images for letter %d: %v", letter.ID, saveErr)
+					// Non-fatal: letter already saved; images cleaned up inside savePageImages.
+				}
+			}
+		} else if sess != nil {
+			sess.DeletePageImages()
+		}
+
 		writeJSON(w, http.StatusCreated, letter)
 	})
 
@@ -350,6 +395,124 @@ func newAPIHandler(config apiConfig) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, letters)
+	})
+
+	// GET /api/letters/{id}/pages — list page image metadata.
+	mux.HandleFunc("GET /api/letters/{id}/pages", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		letterID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || letterID < 1 {
+			http.Error(w, "invalid letter id", http.StatusBadRequest)
+			return
+		}
+		files, err := config.letters.ListPageFiles(r.Context(), letterID)
+		if err != nil {
+			log.Printf("list page files for letter %d: %v", letterID, err)
+			http.Error(w, "could not list page files", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, files)
+	})
+
+	// GET /api/letters/{id}/pages/{page} — serve the full-size page image.
+	mux.HandleFunc("GET /api/letters/{id}/pages/{page}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil || config.filesDir == "" {
+			http.Error(w, "page image storage is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		letterID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || letterID < 1 {
+			http.Error(w, "invalid letter id", http.StatusBadRequest)
+			return
+		}
+		pageNo, err := strconv.Atoi(r.PathValue("page"))
+		if err != nil || pageNo < 1 {
+			http.Error(w, "invalid page number", http.StatusBadRequest)
+			return
+		}
+		path, mime, err := config.letters.GetPageFilePath(r.Context(), letterID, pageNo)
+		if err != nil {
+			log.Printf("get page file path: %v", err)
+			http.Error(w, "could not look up page image", http.StatusInternalServerError)
+			return
+		}
+		if path == "" || !isInsideDir(config.filesDir, path) {
+			http.Error(w, "page image not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", mime)
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		http.ServeFile(w, r, path)
+	})
+
+	// GET /api/letters/{id}/pages/{page}/thumbnail — serve a small thumbnail.
+	mux.HandleFunc("GET /api/letters/{id}/pages/{page}/thumbnail", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil || config.filesDir == "" {
+			http.Error(w, "page image storage is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		letterID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || letterID < 1 {
+			http.Error(w, "invalid letter id", http.StatusBadRequest)
+			return
+		}
+		pageNo, err := strconv.Atoi(r.PathValue("page"))
+		if err != nil || pageNo < 1 {
+			http.Error(w, "invalid page number", http.StatusBadRequest)
+			return
+		}
+		path, _, err := config.letters.GetPageFilePath(r.Context(), letterID, pageNo)
+		if err != nil {
+			log.Printf("get page file path for thumbnail: %v", err)
+			http.Error(w, "could not look up page image", http.StatusInternalServerError)
+			return
+		}
+		if path == "" || !isInsideDir(config.filesDir, path) {
+			http.Error(w, "page image not found", http.StatusNotFound)
+			return
+		}
+		thumbPath := path + ".thumb.jpg"
+		if _, statErr := os.Stat(thumbPath); os.IsNotExist(statErr) {
+			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+			defer cancel()
+			if err := ocr.CreateThumbnail(ctx, path, thumbPath); err != nil {
+				log.Printf("create thumbnail for %q: %v", path, err)
+				http.Error(w, "could not create thumbnail", http.StatusInternalServerError)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		http.ServeFile(w, r, thumbPath)
+	})
+
+	// DELETE /api/letters/{id}/pages — delete all stored page images for a letter.
+	mux.HandleFunc("DELETE /api/letters/{id}/pages", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil || config.filesDir == "" {
+			http.Error(w, "page image storage is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		letterID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || letterID < 1 {
+			http.Error(w, "invalid letter id", http.StatusBadRequest)
+			return
+		}
+		paths, err := config.letters.DeletePageFiles(r.Context(), letterID)
+		if err != nil {
+			log.Printf("delete page files for letter %d: %v", letterID, err)
+			http.Error(w, "could not delete page files", http.StatusInternalServerError)
+			return
+		}
+		for _, p := range paths {
+			if isInsideDir(config.filesDir, p) {
+				_ = os.Remove(p)
+				_ = os.Remove(p + ".thumb.jpg")
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	mux.HandleFunc("GET /m/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -377,7 +540,7 @@ func corsMiddleware(allowedOrigin string, next http.Handler) http.Handler {
 			w.Header().Add("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -474,4 +637,83 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		log.Printf("write JSON response: %v", err)
 	}
+}
+
+// savePageImages moves processed images from temp session directories to
+// permanent filesDir and records them in the database.
+func savePageImages(ctx context.Context, config apiConfig, letterID int64, imgs []session.PageImage) error {
+	var params []storage.SavePageFileParams
+	var tempDirs []string
+
+	for i, img := range imgs {
+		pageNo := i + 1
+		destDir := filepath.Join(config.filesDir, strconv.FormatInt(letterID, 10))
+		if err := os.MkdirAll(destDir, 0o750); err != nil {
+			cleanupTempDirs(append(tempDirs, img.Dir))
+			return fmt.Errorf("create letter files directory: %w", err)
+		}
+		destPath := filepath.Join(destDir, fmt.Sprintf("page-%d.png", pageNo))
+
+		data, err := os.ReadFile(img.Path)
+		if err != nil {
+			cleanupTempDirs(append(tempDirs, img.Dir))
+			return fmt.Errorf("read page image %d: %w", pageNo, err)
+		}
+		if !isImageBytes(data) {
+			cleanupTempDirs(append(tempDirs, img.Dir))
+			return fmt.Errorf("page image %d is not a recognised image format", pageNo)
+		}
+		sum := sha256.Sum256(data)
+		hash := hex.EncodeToString(sum[:])
+
+		if err := os.WriteFile(destPath, data, 0o640); err != nil {
+			cleanupTempDirs(append(tempDirs, img.Dir))
+			return fmt.Errorf("write page image %d: %w", pageNo, err)
+		}
+		params = append(params, storage.SavePageFileParams{
+			PageNo:    pageNo,
+			Path:      destPath,
+			Mime:      "image/png",
+			SizeBytes: int64(len(data)),
+			Sha256:    hash,
+		})
+		tempDirs = append(tempDirs, img.Dir)
+	}
+
+	if _, err := config.letters.SavePageFiles(ctx, letterID, params); err != nil {
+		for _, p := range params {
+			_ = os.Remove(p.Path)
+		}
+		cleanupTempDirs(tempDirs)
+		return fmt.Errorf("record page files in database: %w", err)
+	}
+	cleanupTempDirs(tempDirs)
+	return nil
+}
+
+func cleanupTempDirs(dirs []string) {
+	seen := make(map[string]bool)
+	for _, d := range dirs {
+		if d != "" && !seen[d] {
+			seen[d] = true
+			_ = os.RemoveAll(d)
+		}
+	}
+}
+
+// isInsideDir returns true if path is inside dir, preventing path traversal.
+func isInsideDir(dir, path string) bool {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absDir, absPath)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..") && rel != ".."
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"os"
 	"sync"
 	"time"
 
@@ -16,6 +17,13 @@ type Event struct {
 	Data any    `json:"data,omitempty"`
 }
 
+// PageImage holds the processed image kept in a temporary directory until the
+// session is confirmed or expires.
+type PageImage struct {
+	Dir  string // temp directory owning the file; caller must remove it
+	Path string
+}
+
 type Session struct {
 	ID, Token  string
 	Expires    time.Time
@@ -24,6 +32,7 @@ type Session struct {
 	processing bool
 	completed  bool
 	pages      [][]ocr.Line
+	pageImages []PageImage
 }
 
 type Store struct {
@@ -40,6 +49,7 @@ func NewStore(ttl time.Duration) *Store {
 			for id, ss := range s.m {
 				if time.Now().After(ss.Expires) {
 					ss.Publish(Event{Type: "expired"})
+					ss.deletePageImages()
 					delete(s.m, id)
 				}
 			}
@@ -59,7 +69,12 @@ func rnd(n int) string {
 
 func (s *Store) New() *Session {
 	for {
-		ss := &Session{ID: rnd(16), Token: rnd(16), Expires: time.Now().Add(s.ttl), subs: map[chan Event]struct{}{}}
+		ss := &Session{
+			ID:      rnd(16),
+			Token:   rnd(16),
+			Expires: time.Now().Add(s.ttl),
+			subs:    map[chan Event]struct{}{},
+		}
 		s.mu.Lock()
 		if _, exists := s.m[ss.ID]; !exists {
 			s.m[ss.ID] = ss
@@ -126,6 +141,42 @@ func (ss *Session) AddPage(lines []ocr.Line, complete bool) ([][]ocr.Line, int, 
 		pages[i] = append([]ocr.Line(nil), ss.pages[i]...)
 	}
 	return pages, len(ss.pages), true
+}
+
+// AddPageImage stores a processed page image in the session for opt-in saving.
+// The session takes ownership of the temp directory.
+func (ss *Session) AddPageImage(img PageImage) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	ss.pageImages = append(ss.pageImages, img)
+}
+
+// TakePageImages atomically removes and returns all stored page images so the
+// confirm handler can move them to permanent storage.
+func (ss *Session) TakePageImages() []PageImage {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	imgs := ss.pageImages
+	ss.pageImages = nil
+	return imgs
+}
+
+// DeletePageImages removes all temporary page image directories held by this session.
+func (ss *Session) DeletePageImages() {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	ss.deletePageImages()
+}
+
+// deletePageImages must be called with ss.mu held or when no other goroutine
+// accesses pageImages (e.g., during store expiry cleanup).
+func (ss *Session) deletePageImages() {
+	for _, img := range ss.pageImages {
+		if img.Dir != "" {
+			_ = os.RemoveAll(img.Dir)
+		}
+	}
+	ss.pageImages = nil
 }
 
 func (ss *Session) FailPage() {

@@ -7,6 +7,16 @@ import { LanguageCode, MessageKey, messages } from "@/lib/i18n";
 import letterLayoutJSON from "@/forms/letter.json";
 import { FormLayout, parseFormLayout } from "@/lib/formLayouts";
 
+type PageFile = {
+  id: number;
+  letterId: number;
+  pageNo: number;
+  mime: string;
+  sizeBytes: number;
+  sha256: string;
+  createdAt: string;
+};
+
 const defaultLayout = parseFormLayout(letterLayoutJSON);
 
 const fieldLabels: Record<keyof Letter, MessageKey> = {
@@ -70,9 +80,14 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
   const [now, setNow] = useState(Date.now());
   const [editableLetter, setEditableLetter] = useState<Letter | null>(null);
   const [confirmedByUser, setConfirmedByUser] = useState(false);
+  const [keepImages, setKeepImages] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [savedLetterId, setSavedLetterId] = useState<number | null>(null);
+  const [pageFiles, setPageFiles] = useState<PageFile[]>([]);
+  const [deletingImages, setDeletingImages] = useState(false);
+  const [deleteImagesError, setDeleteImagesError] = useState("");
   const session = useSession(language);
   const text = messages[language];
   const currentStep = stepForPhase(session.phase);
@@ -155,6 +170,8 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
           confirmed: true,
           formType: layout.id,
           fields: Object.fromEntries(layout.fields.map((key) => [key, letter[key]])),
+          sessionId: session.id,
+          keepImages,
         }),
       });
       if (response.status === 404 || response.status === 405 || response.status === 503) {
@@ -165,8 +182,22 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
         setSaveError(`${text.saveFailed} (${response.status})`);
         return;
       }
+      const saved = (await response.json()) as { id: number };
+      setSavedLetterId(saved.id);
       setSaveSuccess(true);
       session.setPhase("saved");
+
+      // If user opted in, load the saved page file metadata for the viewer.
+      if (keepImages && saved.id) {
+        try {
+          const pagesRes = await fetch(`${apiBase}/api/letters/${saved.id}/pages`);
+          if (pagesRes.ok) {
+            setPageFiles((await pagesRes.json()) as PageFile[]);
+          }
+        } catch {
+          // non-fatal — viewer just won't show thumbnails
+        }
+      }
     } catch {
       setSaveError(text.saveFailed);
     } finally {
@@ -174,11 +205,35 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
     }
   }
 
+  async function deleteImages() {
+    if (!savedLetterId) return;
+    setDeletingImages(true);
+    setDeleteImagesError("");
+    try {
+      const response = await fetch(`${apiBase}/api/letters/${savedLetterId}/pages`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        setDeleteImagesError(text.deleteImagesError);
+        return;
+      }
+      setPageFiles([]);
+    } catch {
+      setDeleteImagesError(text.deleteImagesError);
+    } finally {
+      setDeletingImages(false);
+    }
+  }
+
   function startOver() {
     setEditableLetter(null);
     setConfirmedByUser(false);
+    setKeepImages(false);
     setSaveError("");
     setSaveSuccess(false);
+    setSavedLetterId(null);
+    setPageFiles([]);
+    setDeleteImagesError("");
     session.restart();
   }
 
@@ -474,7 +529,7 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
                 </span>
                 <div>
                   <h1 id="confirmed-title" className="text-xl font-extrabold">{saveSuccess ? text.savedTitle : text.confirmedTitle}</h1>
-                  <p className="mt-1 text-sm leading-6">{saveSuccess ? text.savedDescription : text.confirmedDescription}</p>
+                  <p className="mt-1 text-sm leading-6">{saveSuccess ? (keepImages && pageFiles.length > 0 ? text.savedDescriptionWithImages : text.savedDescription) : text.confirmedDescription}</p>
                 </div>
               </div>
 
@@ -505,6 +560,18 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
                       />
                       <span>{text.confirmationCheckbox}</span>
                     </label>
+                    <label className="flex cursor-pointer items-start gap-3 rounded border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={keepImages}
+                        onChange={(event) => setKeepImages(event.target.checked)}
+                        className="mt-1 h-5 w-5 accent-blue-700"
+                      />
+                      <span>
+                        <span className="font-semibold text-slate-900">{text.keepImagesLabel}</span>
+                        {" "}<span className="text-xs text-slate-500">{text.keepImagesHint}</span>
+                      </span>
+                    </label>
                     <div className="flex flex-wrap justify-between gap-3">
                       <button type="button" onClick={() => { setSaveError(""); session.setPhase("review"); }} className="min-h-11 rounded border-2 border-slate-300 bg-white px-4 py-2 font-bold text-slate-800 hover:bg-slate-50">
                         {text.editFields}
@@ -516,9 +583,29 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
                   </form>
                 )}
                 {saveSuccess && (
-                  <button type="button" onClick={startOver} className="min-h-11 rounded bg-blue-700 px-5 py-2 font-bold text-white hover:bg-blue-800">
-                    {text.newLetter}
-                  </button>
+                  <div className="space-y-4">
+                    <button type="button" onClick={startOver} className="min-h-11 rounded bg-blue-700 px-5 py-2 font-bold text-white hover:bg-blue-800">
+                      {text.newLetter}
+                    </button>
+                    {pageFiles.length > 0 && (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">{text.pageImagesTitle}</h2>
+                          <button type="button" disabled={deletingImages} onClick={() => void deleteImages()} className="rounded border border-red-300 bg-white px-3 py-1 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60">
+                            {deletingImages ? text.deletingImages : text.deletePageImages}
+                          </button>
+                        </div>
+                        {deleteImagesError && <p role="alert" className="mb-2 text-xs font-semibold text-red-900">{deleteImagesError}</p>}
+                        <div className="flex flex-wrap gap-3">
+                          {pageFiles.map((f) => (
+                            <a key={f.id} href={`${apiBase}/api/letters/${f.letterId}/pages/${f.pageNo}`} target="_blank" rel="noreferrer" aria-label={text.pageImageAlt.replace("{n}", String(f.pageNo)).replace("{id}", String(f.letterId))}>
+                              <img src={`${apiBase}/api/letters/${f.letterId}/pages/${f.pageNo}/thumbnail`} alt={text.pageImageAlt.replace("{n}", String(f.pageNo)).replace("{id}", String(f.letterId))} className="h-32 w-24 rounded border border-slate-300 object-cover shadow-sm hover:opacity-80" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </section>

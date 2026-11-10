@@ -24,8 +24,11 @@ services:
       PUBLIC_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
       WEB_ORIGIN: ${NEXT_PUBLIC_WEB_URL:-http://localhost:3000}
       DATABASE_URL: postgres://${POSTGRES_USER:-triscript}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-triscript}?sslmode=disable
+      FILES_DIR: /data/files
     ports:
       - "8080:8080"
+    volumes:
+      - triscript-files:/data/files
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,3 +52,4 @@ services:
 
 volumes:
   triscript-data:
+  triscript-files:

@@ -257,3 +257,21 @@ func ReadBest(ctx context.Context, img string) ([]Line, string, error) {
 	}
 	return best.lines, best.lang, nil
 }
+
+// CreateThumbnail produces a small JPEG thumbnail (max 400x566 px) from src.
+func CreateThumbnail(ctx context.Context, src, dest string) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	args := []string{
+		"-limit", "memory", "128MiB",
+		"-limit", "map", "256MiB",
+		src, "-auto-orient", "-thumbnail", "400x566>", "-quality", "80", dest,
+	}
+	cmd := exec.CommandContext(ctx, "magick", args...)
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("magick thumbnail: %w: %s", err, errb.String())
+	}
+	return nil
+}

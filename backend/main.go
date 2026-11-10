@@ -31,6 +31,7 @@ func main() {
 		letters:   letters,
 		publicURL: env("PUBLIC_URL", "http://localhost:8080"),
 		webOrigin: env("WEB_ORIGIN", "http://localhost:3000"),
+		filesDir:  os.Getenv("FILES_DIR"),
 	})
 	addr := env("LISTEN_ADDR", ":8080")
 	log.Printf("TRISCRIPT API on %s (OCR: eng, sin+eng, tam+eng)", addr)
