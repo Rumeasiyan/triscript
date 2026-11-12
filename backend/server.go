@@ -379,6 +379,8 @@ func newAPIHandler(config apiConfig) http.Handler {
 		}
 
 		// Apply in-memory filters (simple; full-text search is Issue C).
+		// TODO: move filtering into the SQL query once Issue C (pg_trgm search)
+		// is merged — avoids fetching all rows and then discarding most of them.
 		if len(tagFilter) > 0 || correspondentFilter != nil || docTypeFilter != nil {
 			letters = filterLetters(letters, tagFilter, correspondentFilter, docTypeFilter)
 		}

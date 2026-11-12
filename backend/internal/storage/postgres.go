@@ -16,7 +16,7 @@ import (
 //go:embed migrations/001_letters.sql
 var schema string
 
-//go:embed migrations/030_metadata.sql
+//go:embed migrations/003_metadata.sql
 var schemaMeta string
 
 type Postgres struct {
@@ -237,12 +237,12 @@ func (p *Postgres) Patch(ctx context.Context, id int64, patch LetterPatch) (Lett
 		addArg("fields", encoded)
 	}
 	if patch.ClearCorrespondent {
-		setClauses = append(setClauses, fmt.Sprintf("correspondent_id = NULL"))
+		setClauses = append(setClauses, "correspondent_id = NULL")
 	} else if patch.CorrespondentID != nil {
 		addArg("correspondent_id", *patch.CorrespondentID)
 	}
 	if patch.ClearDocumentType {
-		setClauses = append(setClauses, fmt.Sprintf("document_type_id = NULL"))
+		setClauses = append(setClauses, "document_type_id = NULL")
 	} else if patch.DocumentTypeID != nil {
 		addArg("document_type_id", *patch.DocumentTypeID)
 	}
@@ -548,7 +548,11 @@ func (p *Postgres) DeleteCorrespondent(ctx context.Context, id int64) error {
 // SuggestCorrespondent returns a correspondent whose name contains the search
 // string (case-insensitive), to power the "from field suggestion" feature.
 // It returns at most 5 matches; a person must still confirm the choice.
+// q must be at least 2 characters to avoid returning the entire table.
 func (p *Postgres) SuggestCorrespondent(ctx context.Context, q string) ([]Correspondent, error) {
+	if len([]rune(q)) < 2 {
+		return []Correspondent{}, nil
+	}
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT id, name, created_at FROM correspondents
 		 WHERE name ILIKE '%' || $1 || '%'
