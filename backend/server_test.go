@@ -42,6 +42,22 @@ func (m *memoryLetters) List(_ context.Context, _ int) ([]storage.Letter, error)
 	return m.saved, nil
 }
 
+func (m *memoryLetters) SavePageFiles(_ context.Context, _ int64, _ []storage.SavePageFileParams) ([]storage.LetterFile, error) {
+	return nil, nil
+}
+
+func (m *memoryLetters) ListPageFiles(_ context.Context, _ int64) ([]storage.LetterFile, error) {
+	return nil, nil
+}
+
+func (m *memoryLetters) GetPageFilePath(_ context.Context, _ int64, _ int) (string, string, error) {
+	return "", "", nil
+}
+
+func (m *memoryLetters) DeletePageFiles(_ context.Context, _ int64) ([]string, error) {
+	return nil, nil
+}
+
 func TestSessionCreationIsRateLimitedAndCorsIsRestricted(t *testing.T) {
 	handler := newAPIHandler(apiConfig{
 		store: session.NewStore(5 * time.Minute), publicURL: "http://localhost:8080",

@@ -478,8 +478,18 @@ func newAPIHandler(config apiConfig) http.Handler {
 		if _, statErr := os.Stat(thumbPath); os.IsNotExist(statErr) {
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
-			if err := ocr.CreateThumbnail(ctx, path, thumbPath); err != nil {
+			// Write to a temp file then rename to avoid a race where two
+			// concurrent requests both create the thumbnail simultaneously.
+			tmpThumb := thumbPath + ".tmp"
+			if err := ocr.CreateThumbnail(ctx, path, tmpThumb); err != nil {
+				_ = os.Remove(tmpThumb)
 				log.Printf("create thumbnail for %q: %v", path, err)
+				http.Error(w, "could not create thumbnail", http.StatusInternalServerError)
+				return
+			}
+			if err := os.Rename(tmpThumb, thumbPath); err != nil {
+				_ = os.Remove(tmpThumb)
+				log.Printf("rename thumbnail for %q: %v", path, err)
 				http.Error(w, "could not create thumbnail", http.StatusInternalServerError)
 				return
 			}

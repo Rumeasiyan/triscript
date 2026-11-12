@@ -49,7 +49,9 @@ func NewStore(ttl time.Duration) *Store {
 			for id, ss := range s.m {
 				if time.Now().After(ss.Expires) {
 					ss.Publish(Event{Type: "expired"})
-					ss.deletePageImages()
+					s.mu.Unlock()
+					ss.DeletePageImages()
+					s.mu.Lock()
 					delete(s.m, id)
 				}
 			}
