@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.kiro/
+**/node_modules/
+**/.next/
+**/.next-dev/
+**/out/
+**/tsconfig.tsbuildinfo
+**/*.exe
+**/bin/
+**/obj/
+**/coverage/

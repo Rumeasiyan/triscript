@@ -1,0 +1,16 @@
+{
+  "id": "letter",
+  "titleKey": "titleQr",
+  "introKey": "introQr",
+  "fields": [
+    "subject",
+    "myNumber",
+    "yourNumber",
+    "date",
+    "language",
+    "from",
+    "to",
+    "signedBy",
+    "body"
+  ]
+}

@@ -1,4 +1,4 @@
-name: Feature request
+﻿name: Feature request
 description: Suggest something new or a change to how something works.
 labels: ["enhancement"]
 body:

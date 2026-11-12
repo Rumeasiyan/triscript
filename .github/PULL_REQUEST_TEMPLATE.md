@@ -1,4 +1,4 @@
-<!-- Title format: <type>: <what it does> (#<issue>), e.g. feat: add retake button to the capture screen (#12). See docs/WORKFLOW.md -->
+﻿<!-- Title format: <type>: <what it does> (#<issue>), e.g. feat: add retake button to the capture screen (#12). See docs/WORKFLOW.md -->
 
 ## What
 
