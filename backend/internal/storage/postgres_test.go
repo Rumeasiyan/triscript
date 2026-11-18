@@ -21,14 +21,14 @@ func TestPostgresConfirmedLetterRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if _, err := store.Save(ctx, false, "test-letter", map[string]ocr.Field{}); err == nil {
+	if _, err := store.Save(ctx, false, "test-letter", map[string]ocr.Field{}, nil); err == nil {
 		t.Fatal("unconfirmed letter was accepted")
 	}
 	fields := map[string]ocr.Field{
 		"subject": {Value: "TEST SUBJECT, NOT VALID", Conf: 90},
 		"body":    {Value: "TEST BODY, NOT VALID", Conf: 88},
 	}
-	letter, err := store.Save(ctx, true, "test-letter", fields)
+	letter, err := store.Save(ctx, true, "test-letter", fields, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestLetterTagsAndPatch(t *testing.T) {
 	letter, err := store.Save(ctx, true, "test-letter", map[string]ocr.Field{
 		"subject": {Value: "TEST PATCH SUBJECT", Conf: 95},
 		"body":    {Value: "TEST PATCH BODY", Conf: 92},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("save letter: %v", err)
 	}
@@ -328,3 +328,4 @@ func TestLetterTagsAndPatch(t *testing.T) {
 		t.Fatalf("expected ErrNotFound for missing letter, got: %v", err)
 	}
 }
+

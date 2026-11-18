@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Rumeasiyan/triscript/backend/internal/ocr"
@@ -18,6 +19,9 @@ var schema string
 
 //go:embed migrations/003_metadata.sql
 var schemaMeta string
+
+//go:embed migrations/004_search_photo.sql
+var schemaSearchPhoto string
 
 type Postgres struct {
 	db *sql.DB
@@ -37,6 +41,7 @@ type Letter struct {
 	Tags             []Tag           `json:"tags"`
 	Correspondent    *Correspondent  `json:"correspondent,omitempty"`
 	DocumentType     *DocumentType   `json:"documentType,omitempty"`
+	ImageData        []byte          `json:"imageData,omitempty"`
 }
 
 type Tag struct {
@@ -58,7 +63,25 @@ type DocumentType struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// LetterPatch carries the editable fields for PATCH /api/letters/{id}.
+// ListFilter carries optional filters and pagination for ListPaged.
+type ListFilter struct {
+	Page         int
+	PageSize     int
+	Tags         []int64
+	Correspondent *int64
+	DocumentType  *int64
+	DateFrom     string // YYYY-MM-DD, inclusive
+	DateTo       string // YYYY-MM-DD, inclusive
+}
+
+// PagedLetters is the response envelope for ListPaged.
+type PagedLetters struct {
+	Letters  []Letter `json:"letters"`
+	Total    int      `json:"total"`
+	Page     int      `json:"page"`
+	PageSize int      `json:"pageSize"`
+	Pages    int      `json:"pages"`
+}
 type LetterPatch struct {
 	FormType        *string
 	Fields          map[string]ocr.Field
@@ -80,7 +103,7 @@ func Open(ctx context.Context, connectionString string) (*Postgres, error) {
 		db.Close()
 		return nil, fmt.Errorf("connect to PostgreSQL: %w", err)
 	}
-	for _, migration := range []string{schema, schemaMeta} {
+	for _, migration := range []string{schema, schemaMeta, schemaSearchPhoto} {
 		if _, err := db.ExecContext(ctx, migration); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("apply PostgreSQL schema: %w", err)
@@ -95,7 +118,7 @@ func (p *Postgres) Close() error {
 
 // ─── Letters ─────────────────────────────────────────────────────────────────
 
-func (p *Postgres) Save(ctx context.Context, confirmed bool, formType string, fields map[string]ocr.Field) (Letter, error) {
+func (p *Postgres) Save(ctx context.Context, confirmed bool, formType string, fields map[string]ocr.Field, imageData []byte) (Letter, error) {
 	if !confirmed {
 		return Letter{}, fmt.Errorf("letter has not been explicitly confirmed")
 	}
@@ -105,11 +128,11 @@ func (p *Postgres) Save(ctx context.Context, confirmed bool, formType string, fi
 	}
 	var letter Letter
 	if err := p.db.QueryRowContext(ctx,
-		`INSERT INTO letters (confirmed, form_type, fields)
-		 VALUES (TRUE, $1, $2)
+		`INSERT INTO letters (confirmed, form_type, fields, image_data)
+		 VALUES (TRUE, $1, $2, $3)
 		 RETURNING id, confirmed, form_type, fields, created_at, updated_at,
 		           correspondent_id, document_type_id`,
-		formType, encoded,
+		formType, encoded, imageData,
 	).Scan(
 		&letter.ID, &letter.Confirmed, &letter.FormType, &letter.Fields,
 		&letter.CreatedAt, &letter.UpdatedAt,
@@ -550,7 +573,7 @@ func (p *Postgres) DeleteCorrespondent(ctx context.Context, id int64) error {
 // It returns at most 5 matches; a person must still confirm the choice.
 // q must be at least 2 characters to avoid returning the entire table.
 func (p *Postgres) SuggestCorrespondent(ctx context.Context, q string) ([]Correspondent, error) {
-	if len([]rune(q)) < 2 {
+	if len([]rune(strings.TrimSpace(q))) < 2 {
 		return []Correspondent{}, nil
 	}
 	rows, err := p.db.QueryContext(ctx,
@@ -632,6 +655,197 @@ func (p *Postgres) DeleteDocumentType(ctx context.Context, id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Search returns confirmed letters whose OCR text matches the query string.
+// It uses the pre-computed tsvector column for fast GIN index lookups.
+func (p *Postgres) Search(ctx context.Context, q string, limit int) ([]Letter, error) {
+	if limit < 1 || limit > 100 {
+		limit = 100
+	}
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT id, confirmed, form_type, fields, created_at, updated_at,
+		        correspondent_id, document_type_id
+		 FROM letters
+		 WHERE confirmed = TRUE
+		   AND search_vec @@ plainto_tsquery('simple', $1)
+		 ORDER BY ts_rank(search_vec, plainto_tsquery('simple', $1)) DESC,
+		          created_at DESC
+		 LIMIT $2`,
+		q, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search letters: %w", err)
+	}
+	defer rows.Close()
+	letters := make([]Letter, 0)
+	for rows.Next() {
+		var l Letter
+		if err := rows.Scan(
+			&l.ID, &l.Confirmed, &l.FormType, &l.Fields,
+			&l.CreatedAt, &l.UpdatedAt,
+			&l.CorrespondentID, &l.DocumentTypeID,
+		); err != nil {
+			return nil, fmt.Errorf("read search result: %w", err)
+		}
+		l.Tags = []Tag{}
+		letters = append(letters, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate search results: %w", err)
+	}
+	if err := p.hydrateTags(ctx, letters); err != nil {
+		return nil, err
+	}
+	if err := p.hydrateCorrespondents(ctx, letters); err != nil {
+		return nil, err
+	}
+	if err := p.hydrateDocumentTypes(ctx, letters); err != nil {
+		return nil, err
+	}
+	return letters, nil
+}
+
+// ListPaged returns a paginated, filtered list of confirmed letters.
+func (p *Postgres) ListPaged(ctx context.Context, f ListFilter) (PagedLetters, error) {
+	if f.PageSize < 1 || f.PageSize > 100 {
+		f.PageSize = 20
+	}
+	if f.Page < 1 {
+		f.Page = 1
+	}
+
+	args := []any{}
+	where := []string{"l.confirmed = TRUE"}
+
+	addArg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	if f.DateFrom != "" {
+		where = append(where, "l.created_at >= "+addArg(f.DateFrom+"T00:00:00Z"))
+	}
+	if f.DateTo != "" {
+		where = append(where, "l.created_at <= "+addArg(f.DateTo+"T23:59:59Z"))
+	}
+	if f.Correspondent != nil {
+		where = append(where, "l.correspondent_id = "+addArg(*f.Correspondent))
+	}
+	if f.DocumentType != nil {
+		where = append(where, "l.document_type_id = "+addArg(*f.DocumentType))
+	}
+	if len(f.Tags) > 0 {
+		placeholders := ""
+		for i, tid := range f.Tags {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += addArg(tid)
+		}
+		where = append(where, fmt.Sprintf(
+			`EXISTS (SELECT 1 FROM letter_tags lt WHERE lt.letter_id = l.id AND lt.tag_id IN (%s))`,
+			placeholders,
+		))
+	}
+
+	whereClause := "WHERE " + strings.Join(where, " AND ")
+
+	// Count total matching rows.
+	var total int
+	if err := p.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM letters l "+whereClause, args...,
+	).Scan(&total); err != nil {
+		return PagedLetters{}, fmt.Errorf("count letters: %w", err)
+	}
+
+	pages := (total + f.PageSize - 1) / f.PageSize
+	if pages == 0 {
+		pages = 1
+	}
+
+	offset := (f.Page - 1) * f.PageSize
+	countArgs := len(args)
+	args = append(args, f.PageSize, offset)
+
+	rows, err := p.db.QueryContext(ctx, fmt.Sprintf(
+		`SELECT l.id, l.confirmed, l.form_type, l.fields, l.created_at, l.updated_at,
+		        l.correspondent_id, l.document_type_id
+		 FROM letters l %s
+		 ORDER BY l.created_at DESC, l.id DESC
+		 LIMIT $%d OFFSET $%d`,
+		whereClause, countArgs+1, countArgs+2,
+	), args...)
+	if err != nil {
+		return PagedLetters{}, fmt.Errorf("list paged letters: %w", err)
+	}
+	defer rows.Close()
+
+	letters := make([]Letter, 0)
+	for rows.Next() {
+		var l Letter
+		if err := rows.Scan(
+			&l.ID, &l.Confirmed, &l.FormType, &l.Fields,
+			&l.CreatedAt, &l.UpdatedAt,
+			&l.CorrespondentID, &l.DocumentTypeID,
+		); err != nil {
+			return PagedLetters{}, fmt.Errorf("scan paged letter: %w", err)
+		}
+		l.Tags = []Tag{}
+		letters = append(letters, l)
+	}
+	if err := rows.Err(); err != nil {
+		return PagedLetters{}, fmt.Errorf("iterate paged letters: %w", err)
+	}
+	if err := p.hydrateTags(ctx, letters); err != nil {
+		return PagedLetters{}, err
+	}
+	if err := p.hydrateCorrespondents(ctx, letters); err != nil {
+		return PagedLetters{}, err
+	}
+	if err := p.hydrateDocumentTypes(ctx, letters); err != nil {
+		return PagedLetters{}, err
+	}
+	return PagedLetters{
+		Letters:  letters,
+		Total:    total,
+		Page:     f.Page,
+		PageSize: f.PageSize,
+		Pages:    pages,
+	}, nil
+}
+
+// Delete permanently removes a confirmed letter and its associated image.
+func (p *Postgres) Delete(ctx context.Context, id int64) error {
+	result, err := p.db.ExecContext(ctx,
+		`DELETE FROM letters WHERE id = $1 AND confirmed = TRUE`, id)
+	if err != nil {
+		return fmt.Errorf("delete letter %d: %w", id, err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// GetImage returns the stored image bytes for a confirmed letter.
+// Returns ErrNotFound if the letter doesn't exist or has no image.
+func (p *Postgres) GetImage(ctx context.Context, id int64) ([]byte, error) {
+	var data []byte
+	err := p.db.QueryRowContext(ctx,
+		`SELECT image_data FROM letters WHERE id = $1 AND confirmed = TRUE`, id,
+	).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get image %d: %w", id, err)
+	}
+	if len(data) == 0 {
+		return nil, ErrNotFound
+	}
+	return data, nil
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
