@@ -516,9 +516,17 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
                   </form>
                 )}
                 {saveSuccess && (
-                  <button type="button" onClick={startOver} className="min-h-11 rounded bg-blue-700 px-5 py-2 font-bold text-white hover:bg-blue-800">
-                    {text.newLetter}
-                  </button>
+                  <div className="flex flex-wrap gap-3">
+                    <Link
+                      href="/letters"
+                      className="min-h-11 inline-flex items-center rounded bg-emerald-700 px-5 py-2 font-bold text-white hover:bg-emerald-800"
+                    >
+                      {text.viewSavedLetters ?? "View saved letters →"}
+                    </Link>
+                    <button type="button" onClick={startOver} className="min-h-11 rounded border-2 border-slate-300 bg-white px-5 py-2 font-bold text-slate-800 hover:bg-slate-50">
+                      {text.newLetter}
+                    </button>
+                  </div>
                 )}
               </div>
             </section>
@@ -530,6 +538,9 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
         <div className="mx-auto flex max-w-7xl flex-col justify-between gap-2 sm:flex-row">
           <span><strong className="text-slate-950">TRISCRIPT</strong> · {text.footerTitle}</span>
           <div className="flex flex-col gap-2 sm:items-end">
+            <Link href="/letters" className="font-semibold text-blue-800 underline">
+              {text.lettersTitle}
+            </Link>
             <Link href={layout.id === "letter" ? "/forms/leave-application" : "/"} className="font-semibold text-blue-800 underline">
               {layout.id === "letter" ? text.leaveApplicationDemo : text.backToLetterDemo}
             </Link>

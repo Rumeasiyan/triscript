@@ -152,20 +152,46 @@ export async function deleteDocumentType(id: number): Promise<void> {
 
 // ─── Letters ─────────────────────────────────────────────────────────────────
 
+export type PagedLetters = {
+  letters: LetterSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pages: number;
+};
+
 export async function listLetters(params?: {
   tag?: number[];
   correspondent?: number;
   documentType?: number;
-  limit?: number;
-}): Promise<LetterSummary[]> {
+  pageSize?: number;
+  page?: number;
+  q?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<PagedLetters> {
   const url = new URL("/api/letters", window.location.origin);
+  if (params?.q?.trim()) url.searchParams.set("q", params.q.trim());
   if (params?.tag?.length) url.searchParams.set("tag", params.tag.join(","));
   if (params?.correspondent) url.searchParams.set("correspondent", String(params.correspondent));
   if (params?.documentType) url.searchParams.set("documentType", String(params.documentType));
-  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
+  if (params?.dateFrom) url.searchParams.set("dateFrom", params.dateFrom);
+  if (params?.dateTo) url.searchParams.set("dateTo", params.dateTo);
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`list letters: ${res.status}`);
-  return res.json() as Promise<LetterSummary[]>;
+  // Search returns a plain array; paged returns an object — normalise.
+  const data = await res.json() as unknown;
+  if (Array.isArray(data)) {
+    return { letters: data as LetterSummary[], total: (data as LetterSummary[]).length, page: 1, pageSize: 100, pages: 1 };
+  }
+  return data as PagedLetters;
+}
+
+export async function deleteLetter(id: number): Promise<void> {
+  const res = await fetch(`/api/letters/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
 }
 
 export async function patchLetter(id: number, patch: LetterPatch): Promise<LetterSummary> {

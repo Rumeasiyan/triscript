@@ -9,6 +9,7 @@ import {
   type DocumentType,
   type LetterSummary,
   type Tag,
+  deleteLetter,
   listCorrespondents,
   listDocumentTypes,
   listLetters,
@@ -16,9 +17,14 @@ import {
   patchLetter,
 } from "@/lib/metaApi";
 
+const PAGE_SIZE = 20;
+
 export default function LettersList() {
   const [language, setLanguage] = useState<LanguageCode>("en");
   const [letters, setLetters] = useState<LetterSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [allCorrespondents, setAllCorrespondents] = useState<Correspondent[]>([]);
   const [allDocTypes, setAllDocTypes] = useState<DocumentType[]>([]);
@@ -29,6 +35,17 @@ export default function LettersList() {
   const [filterTags, setFilterTags] = useState<number[]>([]);
   const [filterCorrespondent, setFilterCorrespondent] = useState<number | undefined>();
   const [filterDocType, setFilterDocType] = useState<number | undefined>();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  // Delete state
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+
+  // Image viewer state
+  const [viewingImageId, setViewingImageId] = useState<number | null>(null);
 
   // Edit modal state
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -62,14 +79,23 @@ export default function LettersList() {
     setLoading(true);
     setError("");
     listLetters({
+      q: searchQuery || undefined,
       tag: filterTags.length > 0 ? filterTags : undefined,
       correspondent: filterCorrespondent,
       documentType: filterDocType,
+      page,
+      pageSize: PAGE_SIZE,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
     })
-      .then(setLetters)
+      .then((result) => {
+        setLetters(result.letters);
+        setTotal(result.total);
+        setPages(result.pages);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [filterTags, filterCorrespondent, filterDocType]);
+  }, [filterTags, filterCorrespondent, filterDocType, searchQuery, page, dateFrom, dateTo]);
 
   function toggleTagFilter(id: number) {
     setFilterTags((prev) =>
@@ -81,6 +107,26 @@ export default function LettersList() {
     setFilterTags([]);
     setFilterCorrespondent(undefined);
     setFilterDocType(undefined);
+    setSearchQuery("");
+    setSearchInput("");
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm(text.confirmDeleteLetter ?? "Delete this letter? This cannot be undone.")) return;
+    setDeletingId(id);
+    setDeleteError("");
+    try {
+      await deleteLetter(id);
+      setLetters((prev) => prev.filter((l) => l.id !== id));
+      setTotal((t) => t - 1);
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   function openEdit(letter: LetterSummary) {
@@ -121,7 +167,7 @@ export default function LettersList() {
     }
   }
 
-  const hasFilters = filterTags.length > 0 || filterCorrespondent !== undefined || filterDocType !== undefined;
+  const hasFilters = filterTags.length > 0 || filterCorrespondent !== undefined || filterDocType !== undefined || searchQuery !== "" || dateFrom !== "" || dateTo !== "";
 
   return (
     <div className="min-h-screen bg-slate-50 text-govNavy">
@@ -152,6 +198,35 @@ export default function LettersList() {
 
         {/* Filters */}
         <div className="mb-5 space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          {/* Search box */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); setSearchQuery(searchInput); }}
+            className="flex gap-2"
+          >
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder={text.searchPlaceholder ?? "Search letters…"}
+              className="flex-1 rounded border-2 border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-600 focus:outline-none"
+              aria-label="Search letters"
+            />
+            <button
+              type="submit"
+              className="rounded border-2 border-blue-700 bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+            >
+              {text.searchButton ?? "Search"}
+            </button>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => { setSearchQuery(""); setSearchInput(""); }}
+                className="rounded border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                ✕
+              </button>
+            )}
+          </form>
           {/* Tag chips */}
           {allTags.length > 0 && (
             <div>
@@ -189,7 +264,7 @@ export default function LettersList() {
                 </label>
                 <select
                   value={filterCorrespondent ?? ""}
-                  onChange={(e) => setFilterCorrespondent(e.target.value ? Number(e.target.value) : undefined)}
+                  onChange={(e) => { setFilterCorrespondent(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
                   className="min-h-10 rounded border-2 border-slate-300 bg-white px-3 text-sm"
                 >
                   <option value="">—</option>
@@ -206,7 +281,7 @@ export default function LettersList() {
                 </label>
                 <select
                   value={filterDocType ?? ""}
-                  onChange={(e) => setFilterDocType(e.target.value ? Number(e.target.value) : undefined)}
+                  onChange={(e) => { setFilterDocType(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
                   className="min-h-10 rounded border-2 border-slate-300 bg-white px-3 text-sm"
                 >
                   <option value="">—</option>
@@ -216,6 +291,29 @@ export default function LettersList() {
                 </select>
               </div>
             )}
+            {/* Date range */}
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-600">
+                {text.filterDateFrom ?? "From date"}
+              </label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+                className="min-h-10 rounded border-2 border-slate-300 bg-white px-3 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-600">
+                {text.filterDateTo ?? "To date"}
+              </label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+                className="min-h-10 rounded border-2 border-slate-300 bg-white px-3 text-sm"
+              />
+            </div>
             {hasFilters && (
               <div className="flex items-end">
                 <button
@@ -231,6 +329,7 @@ export default function LettersList() {
         </div>
 
         {/* Letters */}
+        {deleteError && <p role="alert" className="mb-3 text-sm font-semibold text-red-900">{deleteError}</p>}
         {loading ? (
           <p className="text-sm text-slate-600">Loading…</p>
         ) : error ? (
@@ -238,69 +337,140 @@ export default function LettersList() {
         ) : letters.length === 0 ? (
           <p className="text-sm text-slate-600">{text.noLetters}</p>
         ) : (
-          <ul className="space-y-3">
-            {letters.map((letter) => {
-              const fields = letter.fields as Record<string, { value: string; confidence: number }>;
-              const subject = fields["subject"]?.value || fields["Subject"]?.value || "";
-              const from = fields["from"]?.value || fields["From"]?.value || "";
-              const date = fields["date"]?.value || fields["Date"]?.value || "";
-              return (
-                <li key={letter.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3 p-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs text-slate-500">#{letter.id}</span>
-                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                          {letter.formType}
-                        </span>
-                        {letter.documentType && (
-                          <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">
-                            {letter.documentType.name}
+          <>
+            <p className="mb-3 text-xs text-slate-500">{total} {text.lettersTitle.toLowerCase()}{pages > 1 ? ` — ${text.pageLabel ?? "page"} ${page} / ${pages}` : ""}</p>
+            <ul className="space-y-3">
+              {letters.map((letter) => {
+                const fields = letter.fields as Record<string, { value: string; confidence: number }>;
+                const subject = fields["subject"]?.value || fields["Subject"]?.value || "";
+                const from = fields["from"]?.value || fields["From"]?.value || "";
+                const date = fields["date"]?.value || fields["Date"]?.value || "";
+                return (
+                  <li key={letter.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3 p-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs text-slate-500">#{letter.id}</span>
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                            {letter.formType}
                           </span>
+                          {letter.documentType && (
+                            <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">
+                              {letter.documentType.name}
+                            </span>
+                          )}
+                        </div>
+                        {subject && <p className="mt-1 font-semibold text-slate-950 truncate">{subject}</p>}
+                        {from && <p className="text-sm text-slate-600">{text.from}: {from}</p>}
+                        {date && <p className="text-xs text-slate-500">{text.date}: {date}</p>}
+                        {letter.correspondent && (
+                          <p className="mt-1 text-xs text-slate-600">
+                            <span className="font-semibold">{text.letterCorrespondent}:</span> {letter.correspondent.name}
+                          </p>
+                        )}
+                        {letter.tags.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {letter.tags.map((tag) => (
+                              <span
+                                key={tag.id}
+                                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold text-white"
+                                style={{ backgroundColor: tag.colour }}
+                              >
+                                {tag.name}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      {subject && <p className="mt-1 font-semibold text-slate-950 truncate">{subject}</p>}
-                      {from && <p className="text-sm text-slate-600">{text.from}: {from}</p>}
-                      {date && <p className="text-xs text-slate-500">{text.date}: {date}</p>}
-                      {letter.correspondent && (
-                        <p className="mt-1 text-xs text-slate-600">
-                          <span className="font-semibold">{text.letterCorrespondent}:</span> {letter.correspondent.name}
-                        </p>
-                      )}
-                      {/* Tag chips */}
-                      {letter.tags.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {letter.tags.map((tag) => (
-                            <span
-                              key={tag.id}
-                              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold text-white"
-                              style={{ backgroundColor: tag.colour }}
-                            >
-                              {tag.name}
-                            </span>
-                          ))}
+                      <div className="flex flex-col items-end gap-2">
+                        <span className="text-xs text-slate-500">
+                          {new Date(letter.createdAt).toLocaleDateString()}
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setViewingImageId(letter.id)}
+                            title={text.viewImage ?? "View scanned image"}
+                            className="min-h-9 rounded border-2 border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-800 hover:bg-slate-50"
+                          >
+                            🖼
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(letter)}
+                            className="min-h-9 rounded border-2 border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-800 hover:bg-slate-50"
+                          >
+                            {text.editMetadata}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingId === letter.id}
+                            onClick={() => void handleDelete(letter.id)}
+                            className="min-h-9 rounded border-2 border-red-200 bg-white px-3 py-1 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                          >
+                            {deletingId === letter.id ? "…" : text.deleteLetter ?? "Delete"}
+                          </button>
                         </div>
-                      )}
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <span className="text-xs text-slate-500">
-                        {new Date(letter.createdAt).toLocaleDateString()}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => openEdit(letter)}
-                        className="min-h-9 rounded border-2 border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-800 hover:bg-slate-50"
-                      >
-                        {text.editMetadata}
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {/* Pagination */}
+            {pages > 1 && (
+              <div className="mt-6 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="min-h-9 rounded border-2 border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  ← {text.prevPage ?? "Prev"}
+                </button>
+                <span className="text-sm text-slate-600">{page} / {pages}</span>
+                <button
+                  type="button"
+                  disabled={page >= pages}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="min-h-9 rounded border-2 border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  {text.nextPage ?? "Next"} →
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
+
+      {/* Image viewer modal */}
+      {viewingImageId !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={text.viewImage ?? "Scanned image"}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setViewingImageId(null)}
+        >
+          <div className="relative max-h-full max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setViewingImageId(null)}
+              className="absolute -top-10 right-0 text-white font-bold text-lg"
+            >
+              ✕ {text.editFields}
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/letters/${viewingImageId}/image`}
+              alt={text.qrAlt ?? "Scanned letter"}
+              className="w-full rounded-lg shadow-2xl"
+              onError={(e) => { (e.target as HTMLImageElement).alt = text.qualityFailed ?? "No image available"; }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Edit metadata modal */}
       {editingId !== null && (

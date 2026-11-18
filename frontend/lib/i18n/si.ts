@@ -173,6 +173,17 @@ const si: Record<keyof typeof en, string> = {
   metadataFailed: "Metadata යාවත්කාලීන කළ නොහැකි විය. දත්තගබඩාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.",
   noLetters: "වත්මන් පෙරහන් වලට ගැලපෙන සුරකින ලද ලිපි නොමැත.",
   manageOrganisation: "සංවිධානය කළමනාකරණය",
+  searchPlaceholder: "ලිපි සොයන්න…",
+  searchButton: "සොයන්න",
+  searchResults: "සෙවුම් ප්‍රතිඵල",
+  filterDateFrom: "ආරම්භ දිනය",
+  filterDateTo: "අවසාන දිනය",
+  deleteLetter: "මකන්න",
+  confirmDeleteLetter: "මෙම ලිපිය ස්ථිරවම මකන්නද? මෙය අහෝ නොකළ හැක.",
+  viewImage: "ස්කෑනය බලන්න",
+  pageLabel: "පිටුව",
+  prevPage: "කලින්",
+  nextPage: "ඊළඟ",
+  viewSavedLetters: "සුරකින ලද ලිපි බලන්න →",
 };
-
 export default si;

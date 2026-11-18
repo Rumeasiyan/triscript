@@ -173,6 +173,17 @@ const ta: Record<keyof typeof en, string> = {
   metadataFailed: "Metadata புதுப்பிக்க முடியவில்லை. தரவுத்தளத்தை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
   noLetters: "தற்போதைய வடிகட்டிகளுக்கு பொருந்தும் சேமிக்கப்பட்ட கடிதங்கள் இல்லை.",
   manageOrganisation: "ஒழுங்கமைப்பை நிர்வகிக்கவும்",
+  searchPlaceholder: "கடிதங்களை தேடுக…",
+  searchButton: "தேடு",
+  searchResults: "தேடல் முடிவுகள்",
+  filterDateFrom: "தொடக்க தேதி",
+  filterDateTo: "இறுதி தேதி",
+  deleteLetter: "நீக்கு",
+  confirmDeleteLetter: "இந்தக் கடிதத்தை நிரந்தரமாக நீக்கவா? இதை மீட்டெடுக்க முடியாது.",
+  viewImage: "ஸ்கேன் பார்",
+  pageLabel: "பக்கம்",
+  prevPage: "முந்தைய",
+  nextPage: "அடுத்த",
+  viewSavedLetters: "சேமிக்கப்பட்ட கடிதங்களை பார்க்கவும் →",
 };
-
 export default ta;

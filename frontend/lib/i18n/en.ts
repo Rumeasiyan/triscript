@@ -171,6 +171,18 @@ const en = {
   metadataFailed: "Could not update metadata. Check the database and retry.",
   noLetters: "No saved letters match the current filters.",
   manageOrganisation: "Manage organisation",
+  searchPlaceholder: "Search letters…",
+  searchButton: "Search",
+  searchResults: "Search results for",
+  filterDateFrom: "From date",
+  filterDateTo: "To date",
+  deleteLetter: "Delete",
+  confirmDeleteLetter: "Delete this letter permanently? This cannot be undone.",
+  viewImage: "View scan",
+  pageLabel: "page",
+  prevPage: "Prev",
+  nextPage: "Next",
+  viewSavedLetters: "View saved letters →",
 } as const;
 
 export default en;
