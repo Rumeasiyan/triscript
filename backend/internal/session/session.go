@@ -24,6 +24,7 @@ type Session struct {
 	processing bool
 	completed  bool
 	pages      [][]ocr.Line
+	ImageData  []byte
 }
 
 type Store struct {
@@ -132,6 +133,26 @@ func (ss *Session) FailPage() {
 	ss.mu.Lock()
 	ss.processing = false
 	ss.mu.Unlock()
+}
+
+// SetImage stores the preprocessed image bytes on the session so the
+// confirm handler can persist them alongside the letter.
+func (ss *Session) SetImage(data []byte) {
+	ss.mu.Lock()
+	ss.ImageData = data
+	ss.mu.Unlock()
+}
+
+// GetImage returns a copy of the stored image bytes.
+func (ss *Session) GetImage() []byte {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	if len(ss.ImageData) == 0 {
+		return nil
+	}
+	out := make([]byte, len(ss.ImageData))
+	copy(out, ss.ImageData)
+	return out
 }
 
 func (ss *Session) PageCount() int {
