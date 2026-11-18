@@ -24,7 +24,7 @@ type memoryLetters struct {
 	confirmed bool
 }
 
-func (m *memoryLetters) Save(_ context.Context, confirmed bool, formType string, fields map[string]ocr.Field) (storage.Letter, error) {
+func (m *memoryLetters) Save(_ context.Context, confirmed bool, formType string, fields map[string]ocr.Field, _ []byte) (storage.Letter, error) {
 	encoded, err := json.Marshal(fields)
 	if err != nil {
 		return storage.Letter{}, err
@@ -347,6 +347,69 @@ func (m *memoryMetaStore) DeleteDocumentType(_ context.Context, id int64) error 
 		}
 	}
 	return storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) Search(_ context.Context, q string, _ int) ([]storage.Letter, error) {
+	q = strings.ToLower(q)
+	var result []storage.Letter
+	for _, l := range m.saved {
+		raw, _ := json.Marshal(l.Fields)
+		if strings.Contains(strings.ToLower(string(raw)), q) {
+			result = append(result, l)
+		}
+	}
+	return result, nil
+}
+
+func (m *memoryMetaStore) GetImage(_ context.Context, id int64) ([]byte, error) {
+	for _, l := range m.saved {
+		if l.ID == id {
+			if len(l.ImageData) == 0 {
+				return nil, storage.ErrNotFound
+			}
+			return l.ImageData, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) Delete(_ context.Context, id int64) error {
+	for i, l := range m.saved {
+		if l.ID == id {
+			m.saved = append(m.saved[:i], m.saved[i+1:]...)
+			return nil
+		}
+	}
+	return storage.ErrNotFound
+}
+
+func (m *memoryMetaStore) ListPaged(_ context.Context, f storage.ListFilter) (storage.PagedLetters, error) {
+	if f.PageSize < 1 {
+		f.PageSize = 20
+	}
+	if f.Page < 1 {
+		f.Page = 1
+	}
+	total := len(m.saved)
+	pages := (total + f.PageSize - 1) / f.PageSize
+	if pages == 0 {
+		pages = 1
+	}
+	start := (f.Page - 1) * f.PageSize
+	end := start + f.PageSize
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+	return storage.PagedLetters{
+		Letters:  m.saved[start:end],
+		Total:    total,
+		Page:     f.Page,
+		PageSize: f.PageSize,
+		Pages:    pages,
+	}, nil
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

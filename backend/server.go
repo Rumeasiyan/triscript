@@ -37,10 +37,14 @@ const (
 )
 
 type letterStore interface {
-	Save(context.Context, bool, string, map[string]ocr.Field) (storage.Letter, error)
+	Save(context.Context, bool, string, map[string]ocr.Field, []byte) (storage.Letter, error)
 	List(context.Context, int) ([]storage.Letter, error)
 	Get(context.Context, int64) (storage.Letter, error)
 	Patch(context.Context, int64, storage.LetterPatch) (storage.Letter, error)
+	Search(context.Context, string, int) ([]storage.Letter, error)
+	GetImage(context.Context, int64) ([]byte, error)
+	Delete(context.Context, int64) error
+	ListPaged(context.Context, storage.ListFilter) (storage.PagedLetters, error)
 
 	CreateTag(context.Context, string, string) (storage.Tag, error)
 	ListTags(context.Context) ([]storage.Tag, error)
@@ -296,6 +300,15 @@ func newAPIHandler(config apiConfig) http.Handler {
 			return
 		}
 		pageAdded = true
+
+		// Persist the preprocessed image in the session so it can be saved
+		// to the DB when the user confirms the letter.
+		if imgBytes, err := os.ReadFile(processedPath); err == nil {
+			s.SetImage(imgBytes)
+		} else {
+			log.Printf("read processed image for session %s: %v", s.ID, err)
+		}
+
 		if complete {
 			result := ocr.ExtractPages(pages)
 			s.Publish(session.Event{Type: "result", Data: result})
@@ -313,6 +326,7 @@ func newAPIHandler(config apiConfig) http.Handler {
 			Confirmed *bool           `json:"confirmed"`
 			FormType  string          `json:"formType"`
 			Fields    json.RawMessage `json:"fields"`
+			SessionID string          `json:"sessionId"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
 		decoder := json.NewDecoder(r.Body)
@@ -342,7 +356,14 @@ func newAPIHandler(config apiConfig) http.Handler {
 			http.Error(w, "letter database is not configured; nothing was saved", http.StatusServiceUnavailable)
 			return
 		}
-		letter, err := config.letters.Save(r.Context(), true, payload.FormType, fields)
+		// Retrieve the scanned image from the session if available.
+		var imageData []byte
+		if payload.SessionID != "" {
+			if sess := config.store.Get(payload.SessionID, ""); sess != nil {
+				imageData = sess.GetImage()
+			}
+		}
+		letter, err := config.letters.Save(r.Context(), true, payload.FormType, fields, imageData)
 		if err != nil {
 			log.Printf("save confirmed letter: %v", err)
 			http.Error(w, "could not save confirmed letter", http.StatusInternalServerError)
@@ -356,36 +377,98 @@ func newAPIHandler(config apiConfig) http.Handler {
 			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
 			return
 		}
-		limit := 100
-		if raw := r.URL.Query().Get("limit"); raw != "" {
-			parsed, err := strconv.Atoi(raw)
-			if err != nil || parsed < 1 || parsed > 100 {
-				http.Error(w, "limit must be between 1 and 100", http.StatusBadRequest)
+
+		// Full-text search — if ?q= is provided, use the GIN index search.
+		if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+			limit := 50
+			if raw := r.URL.Query().Get("limit"); raw != "" {
+				if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 100 {
+					limit = parsed
+				}
+			}
+			results, err := config.letters.Search(r.Context(), q, limit)
+			if err != nil {
+				log.Printf("search letters: %v", err)
+				http.Error(w, "could not search letters", http.StatusInternalServerError)
 				return
 			}
-			limit = parsed
+			writeJSON(w, http.StatusOK, results)
+			return
 		}
 
-		// Optional filters by tag, correspondent, document type.
-		tagFilter := parseIntList(r.URL.Query().Get("tag"))
-		correspondentFilter := parseOptionalInt(r.URL.Query().Get("correspondent"))
-		docTypeFilter := parseOptionalInt(r.URL.Query().Get("documentType"))
+		// Paged list with optional filters.
+		filter := storage.ListFilter{PageSize: 20}
+		if raw := r.URL.Query().Get("page"); raw != "" {
+			if p, err := strconv.Atoi(raw); err == nil && p >= 1 {
+				filter.Page = p
+			}
+		}
+		if raw := r.URL.Query().Get("pageSize"); raw != "" {
+			if ps, err := strconv.Atoi(raw); err == nil && ps >= 1 && ps <= 100 {
+				filter.PageSize = ps
+			}
+		}
+		filter.Tags          = parseIntList(r.URL.Query().Get("tag"))
+		filter.Correspondent  = parseOptionalInt(r.URL.Query().Get("correspondent"))
+		filter.DocumentType   = parseOptionalInt(r.URL.Query().Get("documentType"))
+		filter.DateFrom       = r.URL.Query().Get("dateFrom")
+		filter.DateTo         = r.URL.Query().Get("dateTo")
 
-		letters, err := config.letters.List(r.Context(), limit)
+		result, err := config.letters.ListPaged(r.Context(), filter)
 		if err != nil {
 			log.Printf("list confirmed letters: %v", err)
 			http.Error(w, "could not list confirmed letters", http.StatusInternalServerError)
 			return
 		}
+		writeJSON(w, http.StatusOK, result)
+	})
 
-		// Apply in-memory filters (simple; full-text search is Issue C).
-		// TODO: move filtering into the SQL query once Issue C (pg_trgm search)
-		// is merged — avoids fetching all rows and then discarding most of them.
-		if len(tagFilter) > 0 || correspondentFilter != nil || docTypeFilter != nil {
-			letters = filterLetters(letters, tagFilter, correspondentFilter, docTypeFilter)
+	// DELETE /api/letters/{id}
+	mux.HandleFunc("DELETE /api/letters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
 		}
+		letterID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || letterID < 1 {
+			http.Error(w, "letter id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		if err := config.letters.Delete(r.Context(), letterID); errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "letter not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			log.Printf("delete letter %d: %v", letterID, err)
+			http.Error(w, "could not delete letter", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 
-		writeJSON(w, http.StatusOK, letters)
+	// GET /api/letters/{id}/image — return the stored scanned image.
+	mux.HandleFunc("GET /api/letters/{id}/image", func(w http.ResponseWriter, r *http.Request) {
+		if config.letters == nil {
+			http.Error(w, "letter database is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		letterID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || letterID < 1 {
+			http.Error(w, "letter id must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		data, err := config.letters.GetImage(r.Context(), letterID)
+		if errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "image not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("get image %d: %v", letterID, err)
+			http.Error(w, "could not retrieve image", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		_, _ = w.Write(data)
 	})
 
 	// PATCH /api/letters/{id} — edit metadata of a saved confirmed letter.
