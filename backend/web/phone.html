@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TRISCRIPT</title>
+<style>body{font:20px system-ui;margin:0;padding:24px;text-align:center}
+button,label{display:block;width:100%;padding:18px;margin:12px 0;border-radius:12px;font-size:20px;border:0;background:#1d4ed8;color:#fff}
+img{max-width:100%;border-radius:8px}#s{min-height:2em}</style></head><body>
+<h1>Photograph the letter</h1><p>TEST LETTER, NOT VALID</p>
+<img id="pv" alt="" hidden>
+<label>Take photo<input id="f" type="file" accept="image/*" capture="environment" hidden></label>
+<button id="send" hidden>Send</button><p id="s" role="status"></p>
+<script>
+const id=location.pathname.split('/').pop(),t=new URLSearchParams(location.search).get('t');
+let blob;const $=x=>document.getElementById(x);
+// Downscale in browser: fast upload on weak connections
+$('f').onchange=async e=>{const im=await createImageBitmap(e.target.files[0]);
+ const k=Math.min(1,2200/Math.max(im.width,im.height)),c=document.createElement('canvas');
+ c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+ blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.9));$('pv').src=URL.createObjectURL(blob);
+ $('pv').hidden=false;$('send').hidden=false;$('s').textContent='Check the picture, or retake.'};
+$('send').onclick=async()=>{$('s').textContent='Sending...';const fd=new FormData();fd.append('photo',blob,'p.jpg');
+ const r=await fetch(`/api/sessions/${id}/photo?t=${t}`,{method:'POST',body:fd});
+ $('s').textContent=r.ok?'Sent. Check your computer.':r.status==410?'Session expired. Scan the QR again.':'Failed. Try again.'};
+</script></body></html>
