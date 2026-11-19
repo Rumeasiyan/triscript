@@ -18,7 +18,7 @@ import (
 //go:embed migrations/001_letters.sql
 var schema string
 
-//go:embed migrations/002_letter_files.sql
+//go:embed migrations/010_letter_files.sql
 var schemaFiles string
 
 //go:embed migrations/020_search.sql
