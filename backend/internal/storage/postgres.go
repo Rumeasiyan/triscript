@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
+	"strings"
 	"time"
 
 	"github.com/Rumeasiyan/triscript/backend/internal/ocr"
@@ -15,6 +17,12 @@ import (
 
 //go:embed migrations/001_letters.sql
 var schema string
+
+//go:embed migrations/002_letter_files.sql
+var schemaFiles string
+
+//go:embed migrations/020_search.sql
+var schemaSearch string
 
 //go:embed migrations/030_metadata.sql
 var schemaMeta string
@@ -80,7 +88,7 @@ func Open(ctx context.Context, connectionString string) (*Postgres, error) {
 		db.Close()
 		return nil, fmt.Errorf("connect to PostgreSQL: %w", err)
 	}
-	for _, migration := range []string{schema, schemaMeta} {
+	for _, migration := range []string{schema, schemaFiles, schemaSearch, schemaMeta} {
 		if _, err := db.ExecContext(ctx, migration); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("apply PostgreSQL schema: %w", err)
@@ -634,3 +642,274 @@ func (p *Postgres) DeleteDocumentType(ctx context.Context, id int64) error {
 
 // ErrNotFound is returned when a requested row does not exist.
 var ErrNotFound = errors.New("not found")
+
+// ─── Page image files (Group A) ───────────────────────────────────────────────
+
+// LetterFile represents one stored page image for a confirmed letter.
+type LetterFile struct {
+	ID        int64     `json:"id"`
+	LetterID  int64     `json:"letterId"`
+	PageNo    int       `json:"pageNo"`
+	Mime      string    `json:"mime"`
+	SizeBytes int64     `json:"sizeBytes"`
+	Sha256    string    `json:"sha256"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// SavePageFileParams carries metadata for one page image to be recorded.
+type SavePageFileParams struct {
+	PageNo    int
+	Path      string
+	Mime      string
+	SizeBytes int64
+	Sha256    string
+}
+
+// SavePageFiles inserts letter_files rows atomically.
+func (p *Postgres) SavePageFiles(ctx context.Context, letterID int64, pages []SavePageFileParams) ([]LetterFile, error) {
+	files := make([]LetterFile, 0, len(pages))
+	for _, pg := range pages {
+		var f LetterFile
+		if err := p.db.QueryRowContext(ctx,
+			`INSERT INTO letter_files
+			   (letter_id, page_no, path, mime, size_bytes, sha256)
+			 VALUES ($1,$2,$3,$4,$5,$6)
+			 RETURNING id, letter_id, page_no, mime, size_bytes, sha256, created_at`,
+			letterID, pg.PageNo, pg.Path, pg.Mime, pg.SizeBytes, pg.Sha256,
+		).Scan(&f.ID, &f.LetterID, &f.PageNo, &f.Mime, &f.SizeBytes, &f.Sha256, &f.CreatedAt); err != nil {
+			return nil, fmt.Errorf("save page file %d for letter %d: %w", pg.PageNo, letterID, err)
+		}
+		files = append(files, f)
+	}
+	return files, nil
+}
+
+// ListPageFiles returns metadata for all pages of a letter, ordered by page_no.
+func (p *Postgres) ListPageFiles(ctx context.Context, letterID int64) ([]LetterFile, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT id, letter_id, page_no, mime, size_bytes, sha256, created_at
+		 FROM letter_files WHERE letter_id = $1 ORDER BY page_no`,
+		letterID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list page files: %w", err)
+	}
+	defer rows.Close()
+	var files []LetterFile
+	for rows.Next() {
+		var f LetterFile
+		if err := rows.Scan(&f.ID, &f.LetterID, &f.PageNo, &f.Mime, &f.SizeBytes, &f.Sha256, &f.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan page file: %w", err)
+		}
+		files = append(files, f)
+	}
+	return files, rows.Err()
+}
+
+// GetPageFilePath returns the on-disk path and mime type for a single page.
+func (p *Postgres) GetPageFilePath(ctx context.Context, letterID int64, pageNo int) (string, string, error) {
+	var path, mime string
+	err := p.db.QueryRowContext(ctx,
+		`SELECT path, mime FROM letter_files WHERE letter_id = $1 AND page_no = $2`,
+		letterID, pageNo,
+	).Scan(&path, &mime)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("get page file path: %w", err)
+	}
+	return path, mime, nil
+}
+
+// DeletePageFiles removes all letter_files rows and returns on-disk paths.
+func (p *Postgres) DeletePageFiles(ctx context.Context, letterID int64) ([]string, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`DELETE FROM letter_files WHERE letter_id = $1 RETURNING path`, letterID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("delete page files: %w", err)
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, fmt.Errorf("scan deleted path: %w", err)
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
+}
+
+// ─── Full-text search (Group B) ───────────────────────────────────────────────
+
+// SearchResult wraps a Letter with an HTML-escaped snippet from ts_headline.
+type SearchResult struct {
+	Letter
+	Snippet string `json:"snippet"`
+	Total   int64  `json:"-"` // total matching rows (reported once in SearchPage)
+}
+
+// SearchPage is the response envelope for GET /api/letters/search.
+type SearchPage struct {
+	Total   int64          `json:"total"`
+	Offset  int            `json:"offset"`
+	Limit   int            `json:"limit"`
+	Results []SearchResult `json:"results"`
+}
+
+// SearchParams carries validated query parameters for Search.
+type SearchParams struct {
+	Q        string
+	FormType string
+	Language string
+	DateFrom string // YYYY-MM-DD
+	DateTo   string // YYYY-MM-DD
+	Sort     string // "newest" | "oldest"
+	Limit    int
+	Offset   int
+}
+
+// Search runs tsvector whole-word AND trigram partial-match query, returns
+// highlighted snippets and total count.
+func (p *Postgres) Search(ctx context.Context, sp SearchParams) (SearchPage, error) {
+	if sp.Limit < 1 || sp.Limit > 100 {
+		sp.Limit = 20
+	}
+	if sp.Offset < 0 {
+		sp.Offset = 0
+	}
+	sortDir := "DESC"
+	if sp.Sort == "oldest" {
+		sortDir = "ASC"
+	}
+
+	args := []any{}
+	conditions := []string{"l.confirmed = TRUE"}
+
+	addArg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	// Full-text or trigram match when q is provided.
+	// We use the same arg value for tsvector, trigram and ts_headline, but each
+	// must be a separate $N placeholder so both the count and data queries can
+	// share the same positional-arg slice without conflicts.
+	snippetExpr := "''"
+	if sp.Q != "" {
+		tsqArg := addArg(sp.Q)   // $N for plainto_tsquery
+		trgArg := addArg(sp.Q)   // $N+1 for trigram operators
+		conditions = append(conditions,
+			fmt.Sprintf(`(
+				l.search_vector @@ plainto_tsquery('simple', %s)
+				OR (l.fields->>'subject') %%> %s
+				OR (l.fields->>'body')    %%> %s
+				OR (l.fields->>'from')    %%> %s
+			)`, tsqArg, trgArg, trgArg, trgArg),
+		)
+		// ts_headline arg — added only in the data query, so we record its
+		// placeholder text now but do NOT call addArg here.
+		// We'll add it right before building the data query.
+		_ = trgArg // silence unused-var lint
+	}
+
+	if sp.FormType != "" {
+		conditions = append(conditions, fmt.Sprintf("l.form_type = %s", addArg(sp.FormType)))
+	}
+	if sp.Language != "" {
+		conditions = append(conditions, fmt.Sprintf("lower(l.fields->>'language') = lower(%s)", addArg(sp.Language)))
+	}
+	if sp.DateFrom != "" {
+		conditions = append(conditions, fmt.Sprintf("l.created_at >= %s::date", addArg(sp.DateFrom)))
+	}
+	if sp.DateTo != "" {
+		conditions = append(conditions, fmt.Sprintf("l.created_at < (%s::date + interval '1 day')", addArg(sp.DateTo)))
+	}
+
+	where := strings.Join(conditions, " AND ")
+
+	// COUNT uses only the args built so far (no snippet arg yet).
+	countArgs := make([]any, len(args))
+	copy(countArgs, args)
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM letters l WHERE %s`, where)
+	var total int64
+	if err := p.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		return SearchPage{}, fmt.Errorf("search count: %w", err)
+	}
+
+	// Add snippet arg and limit/offset AFTER the count query.
+	if sp.Q != "" {
+		snippetArg := addArg(sp.Q)
+		snippetExpr = fmt.Sprintf(
+			`ts_headline('simple', coalesce(l.fields->>'body',''), plainto_tsquery('simple', %s),
+			 'StartSel=<mark>,StopSel=</mark>,MaxWords=35,MinWords=15,MaxFragments=1')`,
+			snippetArg,
+		)
+	}
+	limitArg := addArg(sp.Limit)
+	offsetArg := addArg(sp.Offset)
+
+	dataQuery := fmt.Sprintf(`
+		SELECT l.id, l.confirmed, l.form_type, l.fields, l.created_at, l.updated_at,
+		       l.correspondent_id, l.document_type_id,
+		       %s AS snippet
+		FROM letters l
+		WHERE %s
+		ORDER BY l.created_at %s, l.id %s
+		LIMIT %s OFFSET %s`,
+		snippetExpr, where, sortDir, sortDir, limitArg, offsetArg,
+	)
+
+	rows, err := p.db.QueryContext(ctx, dataQuery, args...)
+	if err != nil {
+		return SearchPage{}, fmt.Errorf("search query: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]SearchResult, 0)
+	letters := make([]Letter, 0)
+
+	for rows.Next() {
+		var sr SearchResult
+		var rawSnippet string
+		if err := rows.Scan(
+			&sr.ID, &sr.Confirmed, &sr.FormType, &sr.Fields,
+			&sr.CreatedAt, &sr.UpdatedAt,
+			&sr.CorrespondentID, &sr.DocumentTypeID,
+			&rawSnippet,
+		); err != nil {
+			return SearchPage{}, fmt.Errorf("scan search result: %w", err)
+		}
+		sr.Tags = []Tag{}
+		// ts_headline produces HTML tags we want; HTML-escape everything else.
+		sr.Snippet = html.EscapeString(rawSnippet)
+		results = append(results, sr)
+		letters = append(letters, sr.Letter)
+	}
+	if err := rows.Err(); err != nil {
+		return SearchPage{}, fmt.Errorf("iterate search results: %w", err)
+	}
+
+	// Hydrate related entities into the shared Letter slice.
+	if err := p.hydrateTags(ctx, letters); err != nil {
+		return SearchPage{}, err
+	}
+	if err := p.hydrateCorrespondents(ctx, letters); err != nil {
+		return SearchPage{}, err
+	}
+	if err := p.hydrateDocumentTypes(ctx, letters); err != nil {
+		return SearchPage{}, err
+	}
+	for i := range results {
+		results[i].Letter = letters[i]
+	}
+
+	return SearchPage{
+		Total:   total,
+		Offset:  sp.Offset,
+		Limit:   sp.Limit,
+		Results: results,
+	}, nil
+}

@@ -2,7 +2,7 @@
 
 TRISCRIPT is an open-source, local-network application for reading a photographed letter and preparing editable fields in English, Sinhala, and Tamil. It uses Tesseract OCR and stores a record only after a person reviews it and explicitly confirms saving.
 
-**Privacy:** uploaded photos are processed on the computer running the backend and removed when OCR finishes. PostgreSQL stores confirmed field values only; it never stores the uploaded photo. The application does not send documents to an external service, and the frontend's Next.js telemetry is disabled by the provided npm and LAN scripts.
+**Privacy:** uploaded photos are processed on the computer running the backend and removed when OCR finishes. Only confirmed field values are stored in PostgreSQL — no photograph is ever stored unless the reviewing person explicitly ticks **"Also keep the original page images (opt in)"** at save time. Even then the images stay on the local server only and can be deleted at any time. The application does not send documents to an external service, and the frontend's Next.js telemetry is disabled by the provided npm and LAN scripts.
 
 ## Requirements
 
@@ -111,8 +111,18 @@ The leave-application demo uses the same scanner with a different JSON layout at
 - `POST /api/sessions` — create a five-minute phone pairing session (limited to 10 creations per client IP per minute).
 - `GET /api/sessions/{id}/events` — receive OCR progress/results over server-sent events.
 - `POST /api/sessions/{id}/photo?t=TOKEN` — upload one page, with a required per-session token and a 12 MiB request limit. Add `complete=false` for an intermediate page.
-- `POST /api/letters` — store editable fields only when the JSON body includes `confirmed: true` and a valid `formType`.
-- `GET /api/letters?limit=100` — list confirmed field records only; the maximum page size is 100.
+- `POST /api/letters` — store editable fields only when the JSON body includes `confirmed: true`, a valid `formType`, and optionally `keepImages: true` and `sessionId`.
+- `GET /api/letters?limit=100` — list confirmed records; supports `?tag=`, `?correspondent=`, `?documentType=` filters.
+- `GET /api/letters/search?q=…` — full-text and trigram search across all letter fields; supports `formType`, `language`, `dateFrom`, `dateTo`, `sort`, `limit`, `offset`.
+- `GET /api/letters/{id}` — single confirmed letter.
+- `PATCH /api/letters/{id}` — edit fields, tags, correspondent and document type of a saved letter.
+- `GET /api/letters/{id}/pages` — list stored page-image metadata.
+- `GET /api/letters/{id}/pages/{n}` — full-resolution page image (only when `keepImages` was set).
+- `GET /api/letters/{id}/pages/{n}/thumbnail` — small JPEG thumbnail.
+- `DELETE /api/letters/{id}/pages` — delete all stored page images for a letter.
+- `GET/POST /api/tags`, `PUT/DELETE /api/tags/{id}` — tag management (name + hex colour).
+- `GET/POST /api/correspondents`, `PUT/DELETE /api/correspondents/{id}` — correspondent management; `GET ?suggest=` returns up to five name matches.
+- `GET/POST /api/document-types`, `PUT/DELETE /api/document-types/{id}` — document type management.
 - `GET /healthz` — backend health check.
 
 The API permits browser CORS requests only from the configured `WEB_ORIGIN`. Database endpoints return HTTP 503 when `DATABASE_URL` is not configured. Photos are never accepted as database fields or inserted into PostgreSQL.

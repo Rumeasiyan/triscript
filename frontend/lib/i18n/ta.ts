@@ -181,6 +181,30 @@ const ta: Record<keyof typeof en, string> = {
   metadataFailed: "Metadata புதுப்பிக்க முடியவில்லை. தரவுத்தளத்தை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
   noLetters: "தற்போதைய வடிகட்டிகளுக்கு பொருந்தும் சேமிக்கப்பட்ட கடிதங்கள் இல்லை.",
   manageOrganisation: "ஒழுங்கமைப்பை நிர்வகிக்கவும்",
+
+  // தேடல் (Group B)
+  navScan: "கடிதம் ஸ்கேன்",
+  navInbox: "இன்பாக்ஸ்",
+  searchTitle: "கடிதங்களை தேடுங்கள்",
+  searchPlaceholder: "பொருள், உரை, அனுப்புநர், பெறுநர், குறிப்பு எண்…",
+  searchLabel: "தேடல்",
+  searchButton: "தேடு",
+  searchFilters: "வடிகட்டிகள்",
+  searchResults: "{count} முடிவு(கள்)",
+  searchNoResults: "உங்கள் தேடலுக்கு எந்த கடிதமும் பொருந்தவில்லை.",
+  searchEmpty: "சேமிக்கப்பட்ட கடிதங்களை தேட ஒரு வார்த்தை அல்லது சொற்றொடரை உள்ளிடவும்.",
+  searchSnippet: "பொருந்தும் உரை",
+  dateFrom: "தொடக்க தேதி",
+  dateTo: "இறுதி தேதி",
+  sortNewest: "புதியது முதல்",
+  sortOldest: "பழையது முதல்",
+  sortLabel: "வரிசைப்படுத்து",
+  paginationPrev: "முந்தைய",
+  paginationNext: "அடுத்து",
+  paginationPage: "பக்கம் {current} / {total}",
+  searchFormType: "படிவ வகை",
+  searchLanguage: "மொழி",
+  searchClear: "தேடலை அழிக்கவும்",
 };
 
 export default ta;

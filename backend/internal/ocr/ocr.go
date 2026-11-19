@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type Line struct {
@@ -162,15 +163,27 @@ func checkPageEdges(ctx context.Context, img string) error {
 	return nil
 }
 
-// Preprocess: auto-rotate, grayscale, normalize, sharpen.
+// Preprocess: auto-rotate, deskew, grayscale, adaptive contrast, sharpen.
+// Pipeline tuned for Sri Lankan government letters photographed with a phone.
 func Preprocess(ctx context.Context, in, out string) error {
 	args := []string{
-		"-limit", "memory", "256MiB",
-		"-limit", "map", "512MiB",
-		"-limit", "disk", "1GiB",
-		"-limit", "area", "100MP",
-		in, "-auto-orient", "-resize", "3000x3000", "-colorspace", "Gray",
-		"-normalize", "-sharpen", "0x1", "-density", "300", out}
+		"-limit", "memory", "512MiB",
+		"-limit", "map", "1GiB",
+		"-limit", "disk", "2GiB",
+		"-limit", "area", "200MP",
+		in,
+		"-auto-orient",
+		"-resize", "4000x4000>",      // upscale only if smaller
+		"-colorspace", "Gray",
+		"-deskew", "40%",             // fix phone tilt up to ~20°
+		"+repage",
+		"-clahe", "10x10%+128+3",     // stronger local contrast — lifts text under stamps
+		"-morphology", "Erode", "Disk:1", // thicken thin Tamil strokes slightly
+		"-unsharp", "0x1.5+1.5+0.02",    // sharpen
+		"-level", "10%,90%",          // clip extreme darks/lights — reduces stamp bleed
+		"-density", "300",
+		out,
+	}
 	return exec.CommandContext(ctx, "magick", args...).Run()
 }
 
@@ -179,7 +192,12 @@ func Read(ctx context.Context, img, langs string) ([]Line, error) {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "tesseract", img, "stdout",
-		"-l", langs, "--oem", "1", "--psm", "4", "-c", "tessedit_create_tsv=1")
+		"-l", langs,
+		"--oem", "1",   // LSTM engine
+		"--psm", "6",   // assume uniform block of text (better for letters than column mode)
+		"-c", "tessedit_create_tsv=1",
+		"-c", "preserve_interword_spaces=1", // keep spacing — helps Tamil compound words
+	)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
@@ -218,9 +236,50 @@ func Read(ctx context.Context, img, langs string) ([]Line, error) {
 	lines := make([]Line, 0, len(order))
 	for _, k := range order {
 		a := m[k]
-		lines = append(lines, Line{Text: strings.Join(a.words, " "), Conf: a.sum / float64(a.n)})
+		// Drop lines whose average word confidence is too low — mostly noise.
+		lineConf := a.sum / float64(a.n)
+		if lineConf < 20 {
+			continue
+		}
+		// Filter out individual words that are clearly junk:
+		// single non-Tamil/non-alpha chars, or strings made entirely of
+		// punctuation/pipes/brackets.
+		clean := make([]string, 0, len(a.words))
+		for _, w := range a.words {
+			if isJunkWord(w) {
+				continue
+			}
+			clean = append(clean, w)
+		}
+		if len(clean) == 0 {
+			continue
+		}
+		lines = append(lines, Line{Text: strings.Join(clean, " "), Conf: lineConf})
 	}
 	return lines, nil
+}
+
+// isJunkWord returns true for OCR artefacts that should be dropped:
+// lone pipe/bracket chars, single non-letter tokens, strings with no
+// useful letter content.
+func isJunkWord(w string) bool {
+	runes := []rune(strings.TrimSpace(w))
+	if len(runes) == 0 {
+		return true
+	}
+	// Single-char: keep only letters and digits
+	if len(runes) == 1 {
+		r := runes[0]
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}
+	// Pure punctuation / pipe / bracket sequences
+	useful := 0
+	for _, r := range runes {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			useful++
+		}
+	}
+	return useful == 0
 }
 
 // ReadBest runs eng, sin+eng and tam+eng in parallel and keeps the best result.
@@ -258,7 +317,8 @@ func ReadBest(ctx context.Context, img string) ([]Line, string, error) {
 	return best.lines, best.lang, nil
 }
 
-// CreateThumbnail produces a small JPEG thumbnail (max 400x566 px) from src.
+// CreateThumbnail produces a small JPEG thumbnail (max 400×566 px) from src.
+// Used by the page-image viewer to avoid serving multi-megabyte PNGs for previews.
 func CreateThumbnail(ctx context.Context, src, dest string) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

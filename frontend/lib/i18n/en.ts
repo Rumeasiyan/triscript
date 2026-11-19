@@ -179,6 +179,30 @@ const en = {
   metadataFailed: "Could not update metadata. Check the database and retry.",
   noLetters: "No saved letters match the current filters.",
   manageOrganisation: "Manage organisation",
+
+  // Search (Group B)
+  navScan: "Scan Letter",
+  navInbox: "Inbox",
+  searchTitle: "Search letters",
+  searchPlaceholder: "Search by subject, body, from, to, reference…",
+  searchLabel: "Search",
+  searchButton: "Search",
+  searchFilters: "Filters",
+  searchResults: "{count} result(s)",
+  searchNoResults: "No letters matched your search.",
+  searchEmpty: "Enter a word or phrase to search saved letters.",
+  searchSnippet: "Matching text",
+  dateFrom: "From date",
+  dateTo: "To date",
+  sortNewest: "Newest first",
+  sortOldest: "Oldest first",
+  sortLabel: "Sort",
+  paginationPrev: "Previous",
+  paginationNext: "Next",
+  paginationPage: "Page {current} of {total}",
+  searchFormType: "Form type",
+  searchLanguage: "Language",
+  searchClear: "Clear search",
 } as const;
 
 export default en;

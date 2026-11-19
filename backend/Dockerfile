@@ -7,12 +7,24 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/triscript-api .
 
 FROM debian:trixie-slim
+
+# Install Tesseract + ImageMagick
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        tesseract-ocr tesseract-ocr-eng tesseract-ocr-sin tesseract-ocr-tam \
-        imagemagick-7.q16 curl \
+        tesseract-ocr \
+        imagemagick-7.q16 curl wget ca-certificates \
     && ln -s /usr/bin/magick-im7.q16 /usr/local/bin/magick \
     && rm -rf /var/lib/apt/lists/*
+
+# Download tessdata_best — significantly higher accuracy than the default fast models.
+# eng: English, tam: Tamil, sin: Sinhala
+RUN mkdir -p /usr/share/tessdata-best \
+    && BASE="https://github.com/tesseract-ocr/tessdata_best/raw/main" \
+    && wget -q "$BASE/eng.traineddata" -O /usr/share/tessdata-best/eng.traineddata \
+    && wget -q "$BASE/tam.traineddata" -O /usr/share/tessdata-best/tam.traineddata \
+    && wget -q "$BASE/sin.traineddata" -O /usr/share/tessdata-best/sin.traineddata
+
+ENV TESSDATA_PREFIX=/usr/share/tessdata-best
 
 WORKDIR /app
 COPY --from=build /out/triscript-api ./triscript-api

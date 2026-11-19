@@ -88,6 +88,8 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
   const [pageFiles, setPageFiles] = useState<PageFile[]>([]);
   const [deletingImages, setDeletingImages] = useState(false);
   const [deleteImagesError, setDeleteImagesError] = useState("");
+  // C9: Correspondent suggestions from the "from" field.
+  const [correspondentSuggestions, setCorrespondentSuggestions] = useState<{ id: number; name: string }[]>([]);
   const session = useSession(language);
   const text = messages[language];
   const currentStep = stepForPhase(session.phase);
@@ -143,6 +145,15 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
       if (!base) return current;
       return { ...base, [key]: { ...base[key], value } };
     });
+    // C9: When the "from" field changes, fetch correspondent suggestions.
+    if (key === "from" && value.trim().length >= 2) {
+      fetch(`${apiBase}/api/correspondents?suggest=${encodeURIComponent(value.trim())}`)
+        .then(r => r.ok ? r.json() : [])
+        .then((items: { id: number; name: string }[]) => setCorrespondentSuggestions(items))
+        .catch(() => setCorrespondentSuggestions([]));
+    } else if (key === "from") {
+      setCorrespondentSuggestions([]);
+    }
   }
 
   function confirmDetails(event: FormEvent<HTMLFormElement>) {
@@ -261,6 +272,12 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <Link href="/search" className="min-h-11 rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 hover:bg-slate-50">
+              🔍 {text.searchTitle}
+            </Link>
+            <Link href="/letters" className="min-h-11 rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 hover:bg-slate-50">
+              📂 {text.navInbox}
+            </Link>
             <label htmlFor="interface-language" className="sr-only">{text.languageLabel}</label>
             <select
               id="interface-language"
@@ -492,6 +509,24 @@ export default function DocumentScanner({ layout = defaultLayout }: { layout?: F
                         className={inputClass}
                         aria-describedby={`confidence-${key}`}
                       />
+                      {/* C9: Correspondent suggestions for the "from" field */}
+                      {key === "from" && correspondentSuggestions.length > 0 && (
+                        <div className="mt-1 rounded border border-slate-200 bg-white shadow-sm">
+                          <p className="border-b border-slate-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                            {text.suggestedCorrespondent}
+                          </p>
+                          {correspondentSuggestions.map((s) => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => { updateField("from", s.name); setCorrespondentSuggestions([]); }}
+                              className="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-blue-50"
+                            >
+                              {s.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <span id={`confidence-${key}`} className="sr-only">
                         {text.confidence}: {letter[key].confidence.toFixed(0)} percent
                       </span>

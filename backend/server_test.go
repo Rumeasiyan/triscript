@@ -243,6 +243,14 @@ type memoryMetaStore struct {
 	docTypes      []storage.DocumentType
 }
 
+func (m *memoryMetaStore) Search(_ context.Context, _ storage.SearchParams) (storage.SearchPage, error) {
+	results := make([]storage.SearchResult, 0, len(m.saved))
+	for _, l := range m.saved {
+		results = append(results, storage.SearchResult{Letter: l})
+	}
+	return storage.SearchPage{Total: int64(len(results)), Limit: 20, Results: results}, nil
+}
+
 func (m *memoryMetaStore) Get(_ context.Context, id int64) (storage.Letter, error) {
 	for _, l := range m.saved {
 		if l.ID == id {
@@ -631,5 +639,123 @@ func TestMetadataEndpointsReturnServiceUnavailableWithoutDatabase(t *testing.T) 
 				t.Errorf("%s %s: status=%d want 503", method, endpoint, response.Code)
 			}
 		}
+	}
+}
+
+// B2: Tests for GET /api/letters/search endpoint.
+func TestSearchEndpoint(t *testing.T) {
+	store := &memoryMetaStore{}
+	handler := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), letters: store,
+		publicURL: "http://localhost:8080", webOrigin: "http://localhost:3000",
+	})
+
+	// Save a TEST letter
+	body, _ := json.Marshal(map[string]any{
+		"confirmed": true, "formType": "letter",
+		"fields": map[string]any{
+			"subject": map[string]any{"value": "TEST AUDIT REPLY LETTER", "confidence": 90},
+			"body":    map[string]any{"value": "TEST body content for search", "confidence": 85},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/letters", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup letter for search: status=%d", rec.Code)
+	}
+
+	// GET /api/letters/search — returns results
+	req = httptest.NewRequest(http.MethodGet, "/api/letters/search?q=TEST", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var page storage.SearchPage
+	if err := json.NewDecoder(rec.Body).Decode(&page); err != nil {
+		t.Fatalf("decode search response: %v", err)
+	}
+	if page.Total < 1 || len(page.Results) < 1 {
+		t.Fatalf("expected at least 1 result, got total=%d results=%d", page.Total, len(page.Results))
+	}
+
+	// GET /api/letters/search — 503 without database
+	handlerNoDB := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), publicURL: "http://localhost:8080",
+		webOrigin: "http://localhost:3000",
+	})
+	req = httptest.NewRequest(http.MethodGet, "/api/letters/search?q=TEST", nil)
+	rec = httptest.NewRecorder()
+	handlerNoDB.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("search without db: status=%d want 503", rec.Code)
+	}
+}
+
+// C10 + A10: Tests for GET /api/letters/{id} and page-file endpoints.
+func TestGetSingleLetterAndPageFileEndpoints(t *testing.T) {
+	store := &memoryMetaStore{}
+	handler := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), letters: store,
+		publicURL: "http://localhost:8080", webOrigin: "http://localhost:3000",
+	})
+
+	// Save a TEST letter
+	body, _ := json.Marshal(map[string]any{
+		"confirmed": true, "formType": "letter",
+		"fields": map[string]any{
+			"subject": map[string]any{"value": "TEST SINGLE LETTER FETCH", "confidence": 90},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/letters", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup: status=%d", rec.Code)
+	}
+	var saved storage.Letter
+	if err := json.NewDecoder(rec.Body).Decode(&saved); err != nil {
+		t.Fatal(err)
+	}
+
+	// GET /api/letters/{id} — found
+	req = httptest.NewRequest(http.MethodGet, "/api/letters/1", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get letter: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var fetched storage.Letter
+	if err := json.NewDecoder(rec.Body).Decode(&fetched); err != nil || fetched.ID != saved.ID {
+		t.Fatalf("get letter: id mismatch or decode error: %v", err)
+	}
+
+	// GET /api/letters/{id} — not found
+	req = httptest.NewRequest(http.MethodGet, "/api/letters/999", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("get missing letter: status=%d want 404", rec.Code)
+	}
+
+	// GET /api/letters/{id}/pages — returns empty list (no images stored)
+	req = httptest.NewRequest(http.MethodGet, "/api/letters/1/pages", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list pages: status=%d", rec.Code)
+	}
+
+	// GET /api/letters/{id}/pages — 503 without database
+	handlerNoDB := newAPIHandler(apiConfig{
+		store: session.NewStore(time.Minute), publicURL: "http://localhost:8080",
+		webOrigin: "http://localhost:3000",
+	})
+	req = httptest.NewRequest(http.MethodGet, "/api/letters/1/pages", nil)
+	rec = httptest.NewRecorder()
+	handlerNoDB.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("pages without db: status=%d want 503", rec.Code)
 	}
 }

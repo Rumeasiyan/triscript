@@ -38,6 +38,17 @@ preprocessed image are temporary files and are removed after the OCR request,
 including on failure. Only fields from confirmed submissions are stored in
 PostgreSQL. There are no cloud OCR or analytics requests.
 
+**Optional image retention.** When reviewing a confirmed letter, you can tick
+**"Also keep the original page images (opt in)"** before saving. When ticked,
+the full-resolution processed images are kept on the server in the `FILES_DIR`
+volume alongside the confirmed record so the original paper can be viewed
+later. The default is off — images are always deleted after OCR unless the
+person explicitly opts in at save time. Stored images can be deleted at any
+time from the saved letter view using the **"Delete stored images"** button.
+
+No photograph is ever stored without an explicit opt-in action by the
+reviewing person.
+
 ## Sinhala and Tamil guides
 
 - Sinhala user guide: **placeholder — translation not yet provided.**

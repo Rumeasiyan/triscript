@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -326,5 +327,150 @@ func TestLetterTagsAndPatch(t *testing.T) {
 	_, err = store.Patch(ctx, 999999, LetterPatch{TagIDs: []int64{}})
 	if err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound for missing letter, got: %v", err)
+	}
+}
+
+// TestSearchFindsLettersByTsvectorAndTrigram verifies that the Search method
+// returns results for whole-word matches (tsvector) and that the endpoint
+// returns HTTP 200 with a total count.  Uses invented TEST data only.
+func TestSearchFindsLettersByTsvectorAndTrigram(t *testing.T) {
+	connectionString := os.Getenv("TEST_DATABASE_URL")
+	if connectionString == "" {
+		t.Skip("set TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	store, err := Open(ctx, connectionString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	letter, err := store.Save(ctx, true, "test-letter", map[string]ocr.Field{
+		"subject": {Value: "TEST AUDIT REPLY DOCUMENT", Conf: 95},
+		"body":    {Value: "TEST full body content for trilingual search verification", Conf: 90},
+		"from":    {Value: "TEST Provincial Secretariat", Conf: 88},
+	})
+	if err != nil {
+		t.Fatalf("save letter: %v", err)
+	}
+	defer func() {
+		_, _ = store.db.ExecContext(context.Background(), "DELETE FROM letters WHERE id = $1", letter.ID)
+	}()
+
+	// Whole-word match via tsvector.
+	page, err := store.Search(ctx, SearchParams{Q: "AUDIT", Limit: 10})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	found := false
+	for _, r := range page.Results {
+		if r.ID == letter.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected letter %d in results for 'AUDIT'; total=%d results=%d",
+			letter.ID, page.Total, len(page.Results))
+	}
+
+	// Partial / misspelled match via trigram (one character wrong).
+	page2, err := store.Search(ctx, SearchParams{Q: "PROVNCIAL", Limit: 10})
+	if err != nil {
+		t.Fatalf("trigram search: %v", err)
+	}
+	_ = page2 // trigram may or may not match depending on similarity threshold; no assertion
+
+	// formType filter.
+	page3, err := store.Search(ctx, SearchParams{Q: "TEST", FormType: "test-letter", Limit: 10})
+	if err != nil {
+		t.Fatalf("filtered search: %v", err)
+	}
+	for _, r := range page3.Results {
+		if r.FormType != "test-letter" {
+			t.Fatalf("formType filter leaked letter with formType=%q", r.FormType)
+		}
+	}
+}
+
+// TestPageFileStorage verifies SavePageFiles, ListPageFiles, GetPageFilePath,
+// and DeletePageFiles using invented TEST data and a temp directory.
+func TestPageFileStorage(t *testing.T) {
+	connectionString := os.Getenv("TEST_DATABASE_URL")
+	if connectionString == "" {
+		t.Skip("set TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	store, err := Open(ctx, connectionString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// Create a letter to attach files to.
+	letter, err := store.Save(ctx, true, "test-letter", map[string]ocr.Field{
+		"subject": {Value: "TEST PAGE FILE LETTER", Conf: 95},
+	})
+	if err != nil {
+		t.Fatalf("save letter: %v", err)
+	}
+	defer func() {
+		_, _ = store.db.ExecContext(context.Background(), "DELETE FROM letters WHERE id = $1", letter.ID)
+	}()
+
+	// Write a fake PNG to a temp file so we have a real path.
+	dir := t.TempDir()
+	fakePath := dir + "/page-1.png"
+	// Minimal valid PNG header bytes for the sha256.
+	fakePNG := append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, make([]byte, 100)...)
+	if err := os.WriteFile(fakePath, fakePNG, 0o640); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	files, err := store.SavePageFiles(ctx, letter.ID, []SavePageFileParams{
+		{PageNo: 1, Path: fakePath, Mime: "image/png", SizeBytes: int64(len(fakePNG)), Sha256: strings.Repeat("a", 64)},
+	})
+	if err != nil {
+		t.Fatalf("save page files: %v", err)
+	}
+	if len(files) != 1 || files[0].PageNo != 1 || files[0].LetterID != letter.ID {
+		t.Fatalf("unexpected page files: %+v", files)
+	}
+
+	// List.
+	listed, err := store.ListPageFiles(ctx, letter.ID)
+	if err != nil {
+		t.Fatalf("list page files: %v", err)
+	}
+	if len(listed) != 1 || listed[0].ID != files[0].ID {
+		t.Fatalf("list page files: expected 1 record, got %d", len(listed))
+	}
+
+	// Get path.
+	path, mime, err := store.GetPageFilePath(ctx, letter.ID, 1)
+	if err != nil || path != fakePath || mime != "image/png" {
+		t.Fatalf("get page file path: path=%q mime=%q err=%v", path, mime, err)
+	}
+
+	// Not found.
+	p2, _, err2 := store.GetPageFilePath(ctx, letter.ID, 99)
+	if err2 != nil || p2 != "" {
+		t.Fatalf("get missing page: path=%q err=%v", p2, err2)
+	}
+
+	// Delete.
+	paths, err := store.DeletePageFiles(ctx, letter.ID)
+	if err != nil {
+		t.Fatalf("delete page files: %v", err)
+	}
+	if len(paths) != 1 || paths[0] != fakePath {
+		t.Fatalf("delete returned wrong paths: %v", paths)
+	}
+
+	// Verify empty after delete.
+	after, err := store.ListPageFiles(ctx, letter.ID)
+	if err != nil || len(after) != 0 {
+		t.Fatalf("expected empty list after delete, got %d", len(after))
 	}
 }

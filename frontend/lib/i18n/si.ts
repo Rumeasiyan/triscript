@@ -181,6 +181,30 @@ const si: Record<keyof typeof en, string> = {
   metadataFailed: "Metadata යාවත්කාලීන කළ නොහැකි විය. දත්තගබඩාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.",
   noLetters: "වත්මන් පෙරහන් වලට ගැලපෙන සුරකින ලද ලිපි නොමැත.",
   manageOrganisation: "සංවිධානය කළමනාකරණය",
+
+  // සෙවීම (Group B)
+  navScan: "ලිපිය පරිලෝකනය",
+  navInbox: "ලිපි ගබඩාව",
+  searchTitle: "ලිපි සොයන්න",
+  searchPlaceholder: "විෂය, අන්තර්ගතය, යවන්නා, ලබන්නා, යොමු…",
+  searchLabel: "සෙවීම",
+  searchButton: "සොයන්න",
+  searchFilters: "පෙරහන්",
+  searchResults: "ප්‍රතිඵල {count}ක්",
+  searchNoResults: "ඔබගේ සෙවුමට ගැලපෙන ලිපි නොමැත.",
+  searchEmpty: "සුරකින ලද ලිපි සෙවීමට වචනයක් හෝ වාක්‍ය ඛණ්ඩයක් ඇතුළත් කරන්න.",
+  searchSnippet: "ගැලපෙන අන්තර්ගතය",
+  dateFrom: "ආරම්භ දිනය",
+  dateTo: "අවසාන දිනය",
+  sortNewest: "නවතම පළමු",
+  sortOldest: "පැරණිතම පළමු",
+  sortLabel: "වර්ග කරන්න",
+  paginationPrev: "පෙර",
+  paginationNext: "ඊළඟ",
+  paginationPage: "පිටුව {current} / {total}",
+  searchFormType: "ආකෘති වර්ගය",
+  searchLanguage: "භාෂාව",
+  searchClear: "සෙවීම ඉවත් කරන්න",
 };
 
 export default si;
